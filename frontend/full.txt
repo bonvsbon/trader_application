@@ -1,0 +1,124 @@
+npm verbose cli C:\Program Files\nodejs\node.exe C:\Program Files\nodejs\node_modules\npm\bin\npm-cli.js
+npm info using npm@11.11.0
+npm info using node@v24.14.1
+npm silly config load:file:C:\Program Files\nodejs\node_modules\npm\npmrc
+npm silly config load:file:D:\github\trader_application\frontend\.npmrc
+npm silly config load:file:C:\Users\sittichai.s\.npmrc
+npm silly config load:file:C:\Users\sittichai.s\AppData\Roaming\npm\etc\npmrc
+npm verbose title npm install
+npm verbose argv "install" "--no-fund" "--no-audit" "--loglevel" "silly"
+npm verbose logfile logs-max:10 dir:C:\Users\sittichai.s\AppData\Local\npm-cache\_logs\2026-06-11T04_23_54_871Z-
+npm verbose logfile C:\Users\sittichai.s\AppData\Local\npm-cache\_logs\2026-06-11T04_23_54_871Z-debug-0.log
+npm silly logfile start cleaning logs, removing 1 files
+npm silly packumentCache heap:4496293888 maxSize:1124073472 maxEntrySize:562036736
+npm silly logfile done cleaning log files
+npm silly idealTree buildDeps
+npm silly fetch manifest axios@^1.7.0
+npm silly packumentCache full:https://registry.npmjs.org/axios cache-miss
+npm http cache https://registry.npmjs.org/axios 31ms (cache hit)
+npm silly packumentCache full:https://registry.npmjs.org/axios set size:827182 disposed:false
+npm silly fetch manifest pinia@^2.1.0
+npm silly packumentCache full:https://registry.npmjs.org/pinia cache-miss
+npm http cache https://registry.npmjs.org/pinia 68ms (cache hit)
+npm silly packumentCache full:https://registry.npmjs.org/pinia set size:548450 disposed:false
+npm silly fetch manifest typescript@^5.5.0
+npm silly packumentCache full:https://registry.npmjs.org/typescript cache-miss
+npm http cache https://registry.npmjs.org/typescript 51ms (cache hit)
+npm silly packumentCache full:https://registry.npmjs.org/typescript set size:15409943 disposed:false
+npm silly fetch manifest vue@^3.5.0
+npm silly packumentCache full:https://registry.npmjs.org/vue cache-miss
+npm http cache https://registry.npmjs.org/vue 18ms (cache hit)
+npm silly packumentCache full:https://registry.npmjs.org/vue set size:2052507 disposed:false
+npm silly fetch manifest vue-router@^4.4.0
+npm silly packumentCache full:https://registry.npmjs.org/vue-router cache-miss
+npm http cache https://registry.npmjs.org/vue-router 14ms (cache hit)
+npm silly packumentCache full:https://registry.npmjs.org/vue-router set size:996123 disposed:false
+npm silly fetch manifest @vitejs/plugin-vue@^5.1.0
+npm silly packumentCache full:https://registry.npmjs.org/@vitejs%2fplugin-vue cache-miss
+npm http cache https://registry.npmjs.org/@vitejs%2fplugin-vue 43ms (cache hit)
+npm silly packumentCache full:https://registry.npmjs.org/@vitejs%2fplugin-vue set size:422758 disposed:false
+npm silly fetch manifest vite@^6.0.0
+npm silly packumentCache full:https://registry.npmjs.org/vite cache-miss
+npm http cache https://registry.npmjs.org/vite 116ms (cache hit)
+npm silly packumentCache full:https://registry.npmjs.org/vite set size:38863551 disposed:false
+npm silly fetch manifest @types/node@^18.0.0 || ^20.0.0 || >=22.0.0
+npm silly packumentCache full:https://registry.npmjs.org/@types%2fnode cache-miss
+npm http cache https://registry.npmjs.org/@types%2fnode 31ms (cache hit)
+npm silly packumentCache full:https://registry.npmjs.org/@types%2fnode set size:11047915 disposed:false
+npm silly fetch manifest jiti@>=1.21.0
+npm silly packumentCache full:https://registry.npmjs.org/jiti cache-miss
+npm http cache https://registry.npmjs.org/jiti 31ms (cache hit)
+npm silly packumentCache full:https://registry.npmjs.org/jiti set size:387989 disposed:false
+npm silly fetch manifest less@*
+npm silly packumentCache full:https://registry.npmjs.org/less cache-miss
+npm http cache https://registry.npmjs.org/less 17ms (cache hit)
+npm silly packumentCache full:https://registry.npmjs.org/less set size:461684 disposed:false
+npm silly fetch manifest lightningcss@^1.21.0
+npm silly packumentCache full:https://registry.npmjs.org/lightningcss cache-miss
+npm http cache https://registry.npmjs.org/lightningcss 16ms (cache hit)
+npm silly packumentCache full:https://registry.npmjs.org/lightningcss set size:186753 disposed:false
+npm silly fetch manifest sass@*
+npm silly packumentCache full:https://registry.npmjs.org/sass cache-miss
+npm http cache https://registry.npmjs.org/sass 31ms (cache hit)
+npm silly packumentCache full:https://registry.npmjs.org/sass set size:728345 disposed:false
+npm silly fetch manifest sass-embedded@*
+npm silly packumentCache full:https://registry.npmjs.org/sass-embedded cache-miss
+npm http cache https://registry.npmjs.org/sass-embedded 21ms (cache hit)
+npm silly packumentCache full:https://registry.npmjs.org/sass-embedded set size:419718 disposed:false
+npm silly fetch manifest stylus@*
+npm silly packumentCache full:https://registry.npmjs.org/stylus cache-miss
+npm http cache https://registry.npmjs.org/stylus 22ms (cache hit)
+npm silly packumentCache full:https://registry.npmjs.org/stylus set size:286766 disposed:false
+npm silly fetch manifest sugarss@*
+npm silly packumentCache full:https://registry.npmjs.org/sugarss cache-miss
+npm http cache https://registry.npmjs.org/sugarss 22ms (cache hit)
+npm silly packumentCache full:https://registry.npmjs.org/sugarss set size:44975 disposed:false
+npm silly fetch manifest postcss@^8.3.3
+npm silly packumentCache full:https://registry.npmjs.org/postcss cache-miss
+npm http cache https://registry.npmjs.org/postcss 18ms (cache hit)
+npm silly packumentCache full:https://registry.npmjs.org/postcss set size:723316 disposed:false
+npm silly fetch manifest terser@^5.16.0
+npm silly packumentCache full:https://registry.npmjs.org/terser cache-miss
+npm http cache https://registry.npmjs.org/terser 16ms (cache hit)
+npm silly packumentCache full:https://registry.npmjs.org/terser set size:803566 disposed:false
+npm silly fetch manifest tsx@^4.8.1
+npm silly packumentCache full:https://registry.npmjs.org/tsx cache-miss
+npm http cache https://registry.npmjs.org/tsx 16ms (cache hit)
+npm silly packumentCache full:https://registry.npmjs.org/tsx set size:304668 disposed:false
+npm silly fetch manifest yaml@^2.4.2
+npm silly packumentCache full:https://registry.npmjs.org/yaml cache-miss
+npm http cache https://registry.npmjs.org/yaml 29ms (cache hit)
+npm silly packumentCache full:https://registry.npmjs.org/yaml set size:385754 disposed:false
+npm silly fetch manifest vue-tsc@^2.1.0
+npm silly packumentCache full:https://registry.npmjs.org/vue-tsc cache-miss
+npm http cache https://registry.npmjs.org/vue-tsc 27ms (cache hit)
+npm silly packumentCache full:https://registry.npmjs.org/vue-tsc set size:755999 disposed:false
+npm silly placeDep ROOT @vitejs/plugin-vue@5.2.4 OK for: trader-application-frontend@0.1.0 want: ^5.1.0
+npm silly placeDep ROOT vue@3.5.36 OK for: @vitejs/plugin-vue@5.2.4 want: ^3.2.25
+npm silly placeDep ROOT vite@6.4.3 OK for: @vitejs/plugin-vue@5.2.4 want: ^5.0.0 || ^6.0.0
+npm silly placeDep ROOT axios@1.17.0 OK for: trader-application-frontend@0.1.0 want: ^1.7.0
+npm silly placeDep ROOT pinia@2.3.1 OK for: trader-application-frontend@0.1.0 want: ^2.1.0
+npm silly placeDep ROOT typescript@5.9.3 OK for: trader-application-frontend@0.1.0 want: ^5.5.0
+npm silly placeDep ROOT vue-router@4.6.4 OK for: trader-application-frontend@0.1.0 want: ^4.4.0
+npm silly placeDep ROOT vue-tsc@2.2.12 OK for: trader-application-frontend@0.1.0 want: ^2.1.0
+npm silly fetch manifest esbuild@^0.25.0
+npm silly packumentCache full:https://registry.npmjs.org/esbuild cache-miss
+npm silly fetch manifest fdir@^6.4.4
+npm silly packumentCache full:https://registry.npmjs.org/fdir cache-miss
+npm silly fetch manifest picomatch@^4.0.2
+npm silly packumentCache full:https://registry.npmjs.org/picomatch cache-miss
+npm silly fetch manifest postcss@^8.5.3
+npm silly packumentCache full:https://registry.npmjs.org/postcss cache-hit
+npm silly fetch manifest rollup@^4.34.9
+npm silly packumentCache full:https://registry.npmjs.org/rollup cache-miss
+npm silly fetch manifest tinyglobby@^0.2.13
+npm silly packumentCache full:https://registry.npmjs.org/tinyglobby cache-miss
+npm silly fetch manifest fsevents@~2.3.3
+npm silly packumentCache full:https://registry.npmjs.org/fsevents cache-miss
+npm verbose cwd D:\github\trader_application\frontend
+npm verbose os Windows_NT 10.0.26200
+npm verbose node v24.14.1
+npm verbose npm  v11.11.0
+npm verbose exit 1
+npm verbose code 1
+npm error A complete log of this run can be found in: C:\Users\sittichai.s\AppData\Local\npm-cache\_logs\2026-06-11T04_23_54_871Z-debug-0.log

@@ -1,0 +1,64 @@
+services:
+  database:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-trader}
+      POSTGRES_USER: ${POSTGRES_USER:-trader}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - trader_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-trader} -d ${POSTGRES_DB:-trader}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      APP_ENV: ${APP_ENV:-dev}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-trader}:${POSTGRES_PASSWORD}@database:5432/${POSTGRES_DB:-trader}
+      API_AUTH_REQUIRED: ${API_AUTH_REQUIRED:-false}
+      API_AUTH_TOKEN: ${API_AUTH_TOKEN:-}
+      ALLOW_REAL_TRADING: ${ALLOW_REAL_TRADING:-false}
+      ALLOW_AUTO_REAL_FULL: ${ALLOW_AUTO_REAL_FULL:-false}
+      EMERGENCY_STOP: ${COMPOSE_EMERGENCY_STOP:-true}
+      MT5_BRIDGE_TYPE: ${MT5_BRIDGE_TYPE:-mock}
+      MT5_EA_SHARED_SECRET: ${MT5_EA_SHARED_SECRET:-}
+      MT5_EA_ALLOW_REMOTE_BIND: ${MT5_EA_ALLOW_REMOTE_BIND:-false}
+    depends_on:
+      database:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:${MT5_EA_PORT:-5555}:${MT5_EA_PORT:-5555}"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)",
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8080}:8080"
+
+volumes:
+  trader_postgres:

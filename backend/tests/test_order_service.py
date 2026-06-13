@@ -101,6 +101,25 @@ def test_real_account_blocks_when_live_news_and_volatility_are_unavailable(
     assert any("volatility/session data unavailable" in reason for reason in result.reasons)
 
 
+def test_configured_live_volatility_provider_blocks_demo_when_data_is_stale(
+    order_service,
+    make_settings,
+):
+    settings = make_settings(volatility_provider="mt5")
+    svc = order_service(
+        settings=settings,
+        volatility_provider=MockVolatilityProvider(),
+    )
+
+    result = svc.place_order(_req(key="demo-stale-volatility-123"))
+
+    assert result.state is OrderState.RISK_BLOCKED
+    assert any(
+        "Live volatility/session data unavailable" in reason
+        for reason in result.reasons
+    )
+
+
 def test_expired_approval_is_cancelled_without_execution(
     order_service,
     make_settings,

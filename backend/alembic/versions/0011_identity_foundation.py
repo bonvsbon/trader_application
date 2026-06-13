@@ -86,14 +86,14 @@ def upgrade() -> None:
         "mt5_config",
         sa.Column("mt5_account_id", sa.Integer(), nullable=True),
     )
-    op.create_foreign_key(
-        "fk_mt5_config_mt5_account_id",
-        "mt5_config",
-        "mt5_accounts",
-        ["mt5_account_id"],
-        ["id"],
-        ondelete="SET NULL",
-    )
+    with op.batch_alter_table("mt5_config") as batch:
+        batch.create_foreign_key(
+            "fk_mt5_config_mt5_account_id",
+            "mt5_accounts",
+            ["mt5_account_id"],
+            ["id"],
+            ondelete="SET NULL",
+        )
     op.create_index(
         "ix_mt5_config_mt5_account_id",
         "mt5_config",
@@ -104,11 +104,11 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_index("ix_mt5_config_mt5_account_id", table_name="mt5_config")
-    op.drop_constraint(
-        "fk_mt5_config_mt5_account_id",
-        "mt5_config",
-        type_="foreignkey",
-    )
+    with op.batch_alter_table("mt5_config") as batch:
+        batch.drop_constraint(
+            "fk_mt5_config_mt5_account_id",
+            type_="foreignkey",
+        )
     op.drop_column("mt5_config", "mt5_account_id")
     op.drop_index("ix_user_sessions_expires_at", table_name="user_sessions")
     op.drop_index("ix_user_sessions_user_id", table_name="user_sessions")

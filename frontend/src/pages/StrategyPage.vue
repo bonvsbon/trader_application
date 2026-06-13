@@ -5,19 +5,20 @@ import {
   type StrategyPresetConfiguration,
   type TradeProposal,
 } from "../api/client";
+import PageHead from "../components/ui/PageHead.vue";
+import Panel from "../components/ui/Panel.vue";
+import Badge from "../components/ui/Badge.vue";
+import Btn from "../components/ui/Btn.vue";
+import Field from "../components/ui/Field.vue";
+import Toggle from "../components/ui/Toggle.vue";
+import Notice from "../components/ui/Notice.vue";
+import EmptyState from "../components/ui/EmptyState.vue";
+import { badgeClass } from "../components/ui/badge";
 
 const config = ref<StrategyPresetConfiguration | null>(null);
 const proposals = ref<TradeProposal[]>([]);
-const setup = ref<{
-  side: "BUY" | "SELL";
-  sl: number | null;
-  volume: number | null;
-  strategy_reason: string;
-}>({
-  side: "BUY",
-  sl: null,
-  volume: null,
-  strategy_reason: "",
+const setup = ref<{ side: "BUY" | "SELL"; sl: number | null; volume: number | null; strategy_reason: string }>({
+  side: "BUY", sl: null, volume: null, strategy_reason: "",
 });
 const loading = ref(true);
 const saving = ref(false);
@@ -34,17 +35,12 @@ const backtestCount = ref(500);
 function errorText(value: any, fallback: string) {
   return value?.response?.data?.detail ?? value?.message ?? fallback;
 }
-
-function fmt(value: string) {
-  return new Date(value).toLocaleString();
-}
-
+function fmt(value: string) { return new Date(value).toLocaleString(); }
 function rfmt(n: number | null | undefined) {
   if (n === null || n === undefined) return "—";
   return `${n >= 0 ? "+" : "−"}${Math.abs(n).toFixed(2)}R`;
 }
-
-function signClass(n: number | null | undefined) {
+function signTone(n: number | null | undefined) {
   if (!n) return "";
   return n > 0 ? "pos" : "neg";
 }
@@ -65,10 +61,7 @@ async function runBacktest() {
 async function load() {
   loading.value = true;
   try {
-    [config.value, proposals.value] = await Promise.all([
-      api.strategyConfiguration(),
-      api.proposals(),
-    ]);
+    [config.value, proposals.value] = await Promise.all([api.strategyConfiguration(), api.proposals()]);
     error.value = null;
   } catch (e: any) {
     error.value = errorText(e, "Failed to load strategy configuration");
@@ -109,6 +102,7 @@ async function generate() {
     proposals.value.unshift(proposal);
     error.value = null;
     message.value = `Proposal #${proposal.id} generated with ${proposal.risk_decision} risk decision.`;
+    setup.value.strategy_reason = "";
   } catch (e: any) {
     error.value = errorText(e, "Failed to generate proposal");
   } finally {
@@ -136,10 +130,7 @@ async function evaluateSignal() {
 }
 
 async function submit(proposal: TradeProposal) {
-  const confirmed = window.confirm(
-    `Submit proposal #${proposal.id}: ${proposal.side} ${proposal.volume} ${proposal.symbol}?`,
-  );
-  if (!confirmed) return;
+  if (!window.confirm(`Submit proposal #${proposal.id}: ${proposal.side} ${proposal.volume} ${proposal.symbol}?`)) return;
   submitting.value = proposal.id;
   try {
     const result = await api.submitProposal(proposal.id);
@@ -157,243 +148,118 @@ onMounted(load);
 </script>
 
 <template>
-  <div class="page-head row between">
-    <div>
-      <h2>Strategy & Proposals</h2>
-      <p class="sub">Configurable XAUUSD D40/D20 preset and risk-checked trade drafts.</p>
-    </div>
-    <button class="btn secondary sm" @click="load" :disabled="loading">Refresh</button>
-  </div>
-
-  <div v-if="error" class="notice">{{ error }}</div>
-  <div v-if="message" class="notice success">{{ message }}</div>
-
-  <div v-if="loading" class="grid">
-    <div class="panel" v-for="i in 2" :key="i">
-      <div class="skeleton sk-line"></div>
-      <div class="skeleton sk-line"></div>
-    </div>
-  </div>
-
-  <template v-else-if="config">
-    <div class="grid strategy-grid">
-      <section class="panel">
-        <div class="panel-head">
-          <span class="panel-title">Preset Configuration</span>
-          <label class="switch-row">
-            <input v-model="config.enabled" type="checkbox" />
-            <span>Enabled</span>
-          </label>
-        </div>
-        <div class="notice warn">
-          D40/D20 = Donchian breakout: enter when the latest closed bar breaks the
-          40-bar high/low; stop at the 20-bar channel; TP at the reward:risk ratio.
-          Automatic signal evaluation stays off until you tick
-          <strong>Confirm signal definition</strong>. Generated signals only create
-          proposals — they never trade until you approve.
-        </div>
-        <div class="form-grid">
-          <div class="field">
-            <label>Symbol</label>
-            <input v-model.trim="config.symbol" />
-          </div>
-          <div class="field">
-            <label>Preset name</label>
-            <input v-model.trim="config.preset_name" />
-          </div>
-          <div class="field">
-            <label>D40 value</label>
-            <input v-model.number="config.d40_value" type="number" min="0.01" step="0.01" />
-          </div>
-          <div class="field">
-            <label>D20 value</label>
-            <input v-model.number="config.d20_value" type="number" min="0.01" step="0.01" />
-          </div>
-          <div class="field">
-            <label>Reward / risk</label>
-            <input v-model.number="config.reward_risk_ratio" type="number" min="0.1" max="10" step="0.1" />
-          </div>
-          <div class="field">
-            <label>Risk %</label>
-            <input v-model.number="config.risk_pct" type="number" min="0.01" step="0.01" />
-          </div>
-        </div>
-        <label class="switch-row news-row">
-          <input v-model="config.require_news_clear" type="checkbox" />
-          <span>Require news filter to be clear</span>
-        </label>
-        <label class="switch-row news-row">
-          <input v-model="config.signal_definition_confirmed" type="checkbox" />
-          <span>Confirm signal definition (enables automatic D40/D20 evaluation)</span>
-        </label>
-        <div class="panel-actions">
-          <button
-            class="btn secondary"
-            @click="evaluateSignal"
-            :disabled="evaluating || !config.enabled || !config.signal_definition_confirmed"
-          >
-            <span v-if="evaluating" class="spin"></span>
-            Evaluate D40/D20 now
-          </button>
-          <button class="btn" @click="saveConfig" :disabled="saving">
-            <span v-if="saving" class="spin"></span>
-            Save preset
-          </button>
-        </div>
-      </section>
-
-      <section class="panel">
-        <div class="panel-head"><span class="panel-title">Manual Proposal Builder</span></div>
-        <div class="field">
-          <label>Side</label>
-          <select v-model="setup.side">
-            <option value="BUY">BUY</option>
-            <option value="SELL">SELL</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Stop loss</label>
-          <input v-model.number="setup.sl" type="number" step="0.01" placeholder="Required" />
-        </div>
-        <div class="field">
-          <label>Volume (optional)</label>
-          <input v-model.number="setup.volume" type="number" min="0.01" step="0.01" placeholder="Auto-size from risk" />
-        </div>
-        <div class="field">
-          <label>Setup reason</label>
-          <textarea v-model.trim="setup.strategy_reason" rows="4" placeholder="Why this D40/D20 setup is valid"></textarea>
-        </div>
-        <button class="btn full" @click="generate" :disabled="generating || !config.enabled">
-          <span v-if="generating" class="spin"></span>
-          Generate risk-checked proposal
-        </button>
-      </section>
-    </div>
-
-    <section class="panel backtest-panel">
-      <div class="panel-head bt-head">
-        <span class="panel-title">Signal backtest · D{{ config.d40_value }}/D{{ config.d20_value }}</span>
-        <div class="bt-controls">
-          <input
-            v-model.number="backtestCount"
-            type="number"
-            min="50"
-            max="5000"
-            step="50"
-            aria-label="Number of candles to test"
-          />
-          <button class="btn secondary sm" @click="runBacktest" :disabled="backtesting">
-            <span v-if="backtesting" class="spin"></span>
-            Run backtest
-          </button>
-        </div>
-      </div>
-      <div class="notice warn">
-        Idealized rule check on the last N closed candles (close-to-close fills, fixed
-        reward:risk, no spread/slippage/commission). A sanity check on the signal
-        definition — <strong>not</strong> a profitability forecast.
-      </div>
-      <template v-if="backtest">
-        <div class="bt-cards">
-          <div class="bt-card">
-            <span class="lbl">Trades</span>
-            <span class="val mono">{{ backtest.trades }}</span>
-            <span class="sub-lbl">{{ backtest.wins }}W · {{ backtest.losses }}L<span v-if="backtest.open_trades"> · {{ backtest.open_trades }} open</span></span>
-          </div>
-          <div class="bt-card">
-            <span class="lbl">Win rate</span>
-            <span class="val mono">{{ backtest.trades ? (backtest.win_rate * 100).toFixed(0) + "%" : "—" }}</span>
-          </div>
-          <div class="bt-card">
-            <span class="lbl">Total R</span>
-            <span class="val mono" :class="signClass(backtest.total_r)">{{ rfmt(backtest.total_r) }}</span>
-          </div>
-          <div class="bt-card">
-            <span class="lbl">Avg R</span>
-            <span class="val mono" :class="signClass(backtest.avg_r)">{{ rfmt(backtest.avg_r) }}</span>
-          </div>
-          <div class="bt-card">
-            <span class="lbl">Max drawdown</span>
-            <span class="val mono neg">{{ backtest.max_drawdown_r ? "−" + backtest.max_drawdown_r.toFixed(2) + "R" : "0.00R" }}</span>
-          </div>
-        </div>
-        <p class="sub bt-meta">
-          {{ backtest.candles }} candles · reward:risk {{ backtest.reward_risk }} · timeframe from preset
-        </p>
+  <div class="stack">
+    <PageHead title="Strategy & Proposals" sub="Donchian D40/D20 preset · proposal builder · signal backtest">
+      <template #actions>
+        <Badge v-if="config" :tone="config.enabled ? 'allow' : 'warn'">{{ config.enabled ? "PRESET ENABLED" : "DISABLED" }}</Badge>
+        <Btn sm variant="secondary" icon="refresh" :loading="loading" @click="load">Refresh</Btn>
       </template>
-      <p v-else class="muted">Run a backtest to evaluate the current preset over recent candles.</p>
-    </section>
+    </PageHead>
 
-    <section class="panel pad-tight">
-      <div class="panel-head proposal-head">
-        <span class="panel-title">Recent Proposals</span>
-        <span class="muted">{{ proposals.length }} total</span>
+    <Notice v-if="error">{{ error }}</Notice>
+    <Notice v-if="message" tone="success">{{ message }}</Notice>
+
+    <div v-if="loading && !config" class="grid">
+      <div class="panel panel-pad" v-for="i in 2" :key="i"><div class="sk-line" /><div class="sk-line" style="margin-top: 8px" /></div>
+    </div>
+
+    <template v-else-if="config">
+      <div class="strat-cols">
+        <Panel title="Preset configuration">
+          <div class="stack">
+            <Toggle label="Strategy enabled" sub="When off, no automatic D40/D20 evaluation runs" :checked="config.enabled" @change="config.enabled = $event" />
+            <div class="form-grid">
+              <Field label="Symbol"><input v-model.trim="config.symbol" /></Field>
+              <Field label="Preset name"><input v-model.trim="config.preset_name" /></Field>
+              <Field label="D40 (entry channel)"><input class="mono" v-model.number="config.d40_value" type="number" min="0.01" step="0.01" /></Field>
+              <Field label="D20 (exit channel)"><input class="mono" v-model.number="config.d20_value" type="number" min="0.01" step="0.01" /></Field>
+              <Field label="Reward / risk"><input class="mono" v-model.number="config.reward_risk_ratio" type="number" min="0.1" max="10" step="0.1" /></Field>
+              <Field label="Risk % per trade"><input class="mono" v-model.number="config.risk_pct" type="number" min="0.01" step="0.01" /></Field>
+            </div>
+            <hr class="hr" />
+            <Toggle label="Require news filter clear" sub="Block evaluation when high-impact news is near" :checked="config.require_news_clear" @change="config.require_news_clear = $event" />
+            <Toggle label="Confirm signal definition" sub="Enables automatic D40/D20 evaluation" :checked="config.signal_definition_confirmed" @change="config.signal_definition_confirmed = $event" />
+            <Notice tone="warn">D40/D20 = Donchian breakout: enter on a 40-period channel break, trail the exit on the 20-period channel. Evaluation only sizes a <span class="mono">DRAFT</span> proposal — it never sends an order.</Notice>
+            <div class="row" style="gap: var(--sp-4)">
+              <Btn variant="secondary" icon="target" :loading="evaluating" :disabled="evaluating || !config.enabled || !config.signal_definition_confirmed" @click="evaluateSignal">Evaluate D40/D20 now</Btn>
+              <Btn icon="save" :loading="saving" @click="saveConfig">Save preset</Btn>
+            </div>
+            <span v-if="!config.enabled || !config.signal_definition_confirmed" class="hint">Enable the strategy and confirm the signal definition to evaluate.</span>
+          </div>
+        </Panel>
+
+        <div class="stack">
+          <Panel title="Manual proposal builder">
+            <div class="stack">
+              <Field label="Side">
+                <div class="seg" :class="setup.side === 'BUY' ? 'buy' : 'sell'">
+                  <button :data-on="setup.side === 'BUY'" @click="setup.side = 'BUY'">BUY</button>
+                  <button :data-on="setup.side === 'SELL'" @click="setup.side = 'SELL'">SELL</button>
+                </div>
+              </Field>
+              <div class="form-grid">
+                <Field label="Stop loss" req><input class="mono" v-model.number="setup.sl" type="number" step="0.01" /></Field>
+                <Field label="Volume" hint="optional · auto-size"><input class="mono" v-model.number="setup.volume" type="number" min="0.01" step="0.01" placeholder="auto" /></Field>
+              </div>
+              <Field label="Setup reason"><textarea v-model.trim="setup.strategy_reason" placeholder="Why is this a valid setup?" /></Field>
+              <Btn icon="check" full :loading="generating" :disabled="generating || !config.enabled" @click="generate">Generate risk-checked proposal</Btn>
+            </div>
+          </Panel>
+
+          <Panel title="Signal backtest">
+            <template #action><span class="faint" style="font-size: var(--text-xs)">read-only</span></template>
+            <div class="stack">
+              <div class="row" style="gap: var(--sp-4)">
+                <Field label="Candles"><input class="mono" v-model.number="backtestCount" type="number" min="50" max="5000" step="50" style="width: 110px" /></Field>
+                <Btn variant="secondary" icon="history" :loading="backtesting" :disabled="backtesting" style="align-self: flex-end" @click="runBacktest">Run backtest</Btn>
+              </div>
+              <div v-if="backtest" class="fade-in stack">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(86px, 1fr)); gap: var(--sp-4)">
+                  <div class="col" style="gap: 2px"><span class="bt-l">Trades</span><span class="mono bt-v">{{ backtest.trades }}</span></div>
+                  <div class="col" style="gap: 2px"><span class="bt-l">Win rate</span><span class="mono bt-v">{{ backtest.trades ? (backtest.win_rate * 100).toFixed(0) + "%" : "—" }}</span></div>
+                  <div class="col" style="gap: 2px"><span class="bt-l">Total R</span><span class="mono bt-v" :class="signTone(backtest.total_r)">{{ rfmt(backtest.total_r) }}</span></div>
+                  <div class="col" style="gap: 2px"><span class="bt-l">Avg R</span><span class="mono bt-v" :class="signTone(backtest.avg_r)">{{ rfmt(backtest.avg_r) }}</span></div>
+                  <div class="col" style="gap: 2px"><span class="bt-l">Max DD</span><span class="mono bt-v neg">{{ backtest.max_drawdown_r ? "−" + backtest.max_drawdown_r.toFixed(2) + "R" : "0.00R" }}</span></div>
+                </div>
+                <Notice tone="neutral">Idealized rule check on {{ backtest.wins }}W / {{ backtest.losses }}L<span v-if="backtest.open_trades"> / {{ backtest.open_trades }} open</span> over {{ backtest.candles }} candles · reward:risk {{ backtest.reward_risk }} — not a profitability forecast.</Notice>
+              </div>
+              <p v-else class="muted" style="font-size: var(--text-sm); margin: 0">Run a backtest to evaluate the current preset over recent candles.</p>
+            </div>
+          </Panel>
+        </div>
       </div>
-      <div v-if="!proposals.length" class="empty">
-        <div class="title">No proposals yet</div>
-        <p>Enable the preset and create a manual setup above.</p>
-      </div>
-      <div v-else class="table-wrap">
-        <table>
-          <thead>
-            <tr><th>Created</th><th>Setup</th><th class="num">Entry</th><th class="num">SL</th><th class="num">TP</th><th class="num">Lot</th><th>Risk</th><th>Status</th><th></th></tr>
-          </thead>
-          <tbody>
-            <tr v-for="proposal in proposals" :key="proposal.id">
-              <td class="mono muted">{{ fmt(proposal.created_at) }}</td>
-              <td><strong>{{ proposal.side }}</strong> {{ proposal.symbol }}</td>
-              <td class="num">{{ proposal.entry_price }}</td>
-              <td class="num">{{ proposal.sl }}</td>
-              <td class="num">{{ proposal.tp.toFixed(2) }}</td>
-              <td class="num">{{ proposal.volume }}</td>
-              <td><span class="badge" :class="proposal.risk_decision">{{ proposal.risk_decision }}</span></td>
-              <td><span class="badge" :class="proposal.status">{{ proposal.status }}</span></td>
-              <td>
-                <button
-                  v-if="proposal.status === 'DRAFT'"
-                  class="btn sm"
-                  @click="submit(proposal)"
-                  :disabled="submitting !== null"
-                >
-                  <span v-if="submitting === proposal.id" class="spin"></span>
-                  Submit
-                </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-  </template>
+
+      <Panel title="Recent proposals" :pad="false">
+        <template #action><span class="faint" style="font-size: var(--text-xs)">{{ proposals.length }} total</span></template>
+        <EmptyState v-if="!proposals.length" icon="strategy" title="No proposals yet" desc="Enable the preset and create a manual setup above." />
+        <div v-else class="table-wrap" style="padding: var(--sp-3)">
+          <table class="tbl">
+            <thead><tr><th>Created</th><th>Setup</th><th class="num">Entry</th><th class="num">SL</th><th class="num">TP</th><th class="num">Lot</th><th>Risk</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              <tr v-for="p in proposals" :key="p.id" class="hoverable">
+                <td class="mono muted">{{ fmt(p.created_at) }}</td>
+                <td><span :style="{ color: p.side === 'BUY' ? 'var(--allow-fg)' : 'var(--block-fg)', fontWeight: 600 }">{{ p.side }}</span> <span class="muted">{{ p.symbol }}</span></td>
+                <td class="num">{{ p.entry_price }}</td>
+                <td class="num">{{ p.sl }}</td>
+                <td class="num">{{ p.tp.toFixed(2) }}</td>
+                <td class="num">{{ p.volume }}</td>
+                <td><Badge :tone="badgeClass(p.risk_decision)">{{ p.risk_decision }}</Badge></td>
+                <td><Badge :tone="badgeClass(p.status)" no-dot>{{ p.status }}</Badge></td>
+                <td style="text-align: right">
+                  <Btn v-if="p.status === 'DRAFT'" sm icon="send" :loading="submitting === p.id" :disabled="submitting !== null" @click="submit(p)">Submit</Btn>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </Panel>
+    </template>
+  </div>
 </template>
 
 <style scoped>
-.notice { margin-bottom: var(--sp-5); }
-.notice.success { background: var(--allow-bg); color: var(--allow-fg); }
-.notice.warn { background: var(--warn-bg); color: var(--warn-fg); font-size: var(--text-sm); }
-.strategy-grid { grid-template-columns: minmax(0, 1.3fr) minmax(280px, 0.7fr); margin-bottom: var(--sp-6); }
-.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 var(--sp-5); }
-.switch-row { display: flex; align-items: center; gap: var(--sp-4); cursor: pointer; }
-.switch-row input { width: auto; }
-.news-row { color: var(--ink-muted); }
-.panel-actions { display: flex; justify-content: flex-end; gap: var(--sp-4); margin-top: var(--sp-5); flex-wrap: wrap; }
-.full { width: 100%; }
-.proposal-head { padding: var(--sp-5) var(--sp-6) 0; }
-.backtest-panel { margin-bottom: var(--sp-6); }
-.bt-head { flex-wrap: wrap; gap: var(--sp-4); }
-.bt-controls { display: flex; align-items: center; gap: var(--sp-3); }
-.bt-controls input { width: 96px; }
-.backtest-panel .notice.warn { margin: var(--sp-5) 0; }
-.bt-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: var(--sp-4); }
-.bt-card { display: flex; flex-direction: column; gap: 2px; padding: var(--sp-5); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-md); }
-.bt-card .lbl { font-size: var(--text-xs); color: var(--ink-muted); }
-.bt-card .val { font-size: var(--text-xl); font-weight: 650; letter-spacing: 0.01em; }
-.bt-card .sub-lbl { font-size: var(--text-xs); color: var(--ink-faint); }
-.bt-meta { margin-top: var(--sp-5); }
-@media (max-width: 850px) {
-  .strategy-grid { grid-template-columns: 1fr; }
-}
-@media (max-width: 560px) {
-  .form-grid { grid-template-columns: 1fr; }
-}
+.strat-cols { display: grid; grid-template-columns: 1.2fr 1fr; gap: var(--sp-6); align-items: start; }
+@media (max-width: 880px) { .strat-cols { grid-template-columns: 1fr; } }
+.bt-l { font-size: var(--text-xs); text-transform: uppercase; color: var(--ink-faint); }
+.bt-v { font-weight: 700; }
 </style>

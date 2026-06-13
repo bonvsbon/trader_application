@@ -1,6 +1,13 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { onMounted, ref, computed } from "vue";
 import { api, type MarketDataConfiguration } from "../api/client";
+import PageHead from "../components/ui/PageHead.vue";
+import Panel from "../components/ui/Panel.vue";
+import Badge from "../components/ui/Badge.vue";
+import Btn from "../components/ui/Btn.vue";
+import Field from "../components/ui/Field.vue";
+import Toggle from "../components/ui/Toggle.vue";
+import Notice from "../components/ui/Notice.vue";
 
 const config = ref<MarketDataConfiguration | null>(null);
 const symbolsText = ref("");
@@ -9,6 +16,8 @@ const saving = ref(false);
 const testing = ref(false);
 const error = ref<string | null>(null);
 const message = ref<string | null>(null);
+
+const isAlpaca = computed(() => config.value?.provider === "alpaca");
 
 function errorText(value: any, fallback: string) {
   const detail = value?.response?.data?.detail;
@@ -43,12 +52,7 @@ function providerChanged() {
 async function save() {
   if (!config.value) return;
   config.value.default_symbols = Array.from(
-    new Set(
-      symbolsText.value
-        .split(",")
-        .map((value) => value.trim().toUpperCase())
-        .filter(Boolean),
-    ),
+    new Set(symbolsText.value.split(",").map((v) => v.trim().toUpperCase()).filter(Boolean)),
   );
   saving.value = true;
   message.value = null;
@@ -83,114 +87,69 @@ onMounted(load);
 </script>
 
 <template>
-  <div class="page-head row between">
-    <div>
-      <h2>Market Data</h2>
-      <p class="sub">Configure the read-only realtime watchlist feed.</p>
-    </div>
-    <button class="btn secondary sm" @click="load" :disabled="loading">Refresh</button>
-  </div>
-
-  <div v-if="error" class="notice">{{ error }}</div>
-  <div v-if="message" class="notice success">{{ message }}</div>
-
-  <section v-if="loading" class="panel">
-    <div class="skeleton sk-line"></div>
-    <div class="skeleton sk-line"></div>
-  </section>
-
-  <section v-else-if="config" class="panel editor">
-    <div class="notice neutral">
-      This feed powers the watchlist only. Risk checks and order execution continue to use MT5 broker quotes.
-    </div>
-
-    <div class="form-grid">
-      <div class="field">
-        <label>Provider</label>
-        <select v-model="config.provider" @change="providerChanged">
-          <option value="mt5">MT5 broker feed</option>
-          <option value="alpaca">Alpaca stocks</option>
-          <option value="disabled">Disabled</option>
-        </select>
-      </div>
-      <div class="field">
-        <label>Enabled</label>
-        <label class="switch-row">
-          <input v-model="config.enabled" type="checkbox" :disabled="config.provider === 'disabled'" />
-          <span>{{ config.enabled ? "Enabled" : "Disabled" }}</span>
-        </label>
-      </div>
-
-      <template v-if="config.provider === 'alpaca'">
-        <div class="field span-2">
-          <label>WebSocket endpoint</label>
-          <input v-model.trim="config.endpoint" />
-          <small>Remote endpoints must use WSS and be allowed by the backend host allowlist.</small>
-        </div>
-        <div class="field">
-          <label>Feed</label>
-          <select v-model="config.feed">
-            <option value="iex">IEX realtime</option>
-            <option value="sip">SIP realtime (subscription required)</option>
-            <option value="delayed_sip">Delayed SIP</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Feed status</label>
-          <input :value="config.feed_status" disabled />
-        </div>
-        <div class="field">
-          <label>API key environment reference</label>
-          <input v-model.trim="config.api_key_ref" placeholder="MARKET_DATA_ALPACA_KEY" />
-          <small>{{ config.api_key_configured ? "Configured" : "No environment value" }}</small>
-        </div>
-        <div class="field">
-          <label>API secret environment reference</label>
-          <input v-model.trim="config.api_secret_ref" placeholder="MARKET_DATA_ALPACA_SECRET" />
-          <small>{{ config.api_secret_configured ? "Configured" : "No environment value" }}</small>
-        </div>
+  <div class="stack">
+    <PageHead title="Market Data" sub="Realtime price feed for the watchlist">
+      <template #actions>
+        <Badge v-if="config" :tone="config.enabled ? 'allow' : 'warn'">{{ config.enabled ? "FEED ENABLED" : "DISABLED" }}</Badge>
+        <Btn sm variant="secondary" icon="refresh" :loading="loading" @click="load">Refresh</Btn>
       </template>
+    </PageHead>
 
-      <div class="field span-2">
-        <label>Default symbols (comma separated)</label>
-        <input v-model.trim="symbolsText" placeholder="XAUUSD or AAPL, MSFT, NVDA" />
-      </div>
-      <div class="field">
-        <label>Maximum symbols</label>
-        <input v-model.number="config.max_symbols" type="number" min="1" max="100" />
-      </div>
-      <div class="field">
-        <label>Connection timeout (seconds)</label>
-        <input v-model.number="config.timeout_sec" type="number" min="1" max="60" />
-      </div>
-    </div>
+    <Notice v-if="error">{{ error }}</Notice>
+    <Notice v-if="message" tone="success">{{ message }}</Notice>
 
-    <div class="actions">
-      <button class="btn secondary" @click="testConnection" :disabled="testing || saving">
-        <span v-if="testing" class="spin"></span>
-        Test connection
-      </button>
-      <button class="btn" @click="save" :disabled="saving || testing">
-        <span v-if="saving" class="spin"></span>
-        Save configuration
-      </button>
-    </div>
-  </section>
+    <div v-if="loading && !config" class="panel panel-pad"><div class="sk-line" /><div class="sk-line" style="margin-top: 8px" /></div>
+
+    <Panel v-else-if="config" title="Feed configuration">
+      <div class="stack">
+        <Toggle
+          label="Feed enabled"
+          sub="Streams quotes to the watchlist only"
+          :checked="config.enabled"
+          @change="config.provider !== 'disabled' && (config.enabled = $event)"
+        />
+        <div class="form-grid">
+          <Field label="Provider">
+            <select v-model="config.provider" @change="providerChanged">
+              <option value="mt5">MT5 broker feed</option>
+              <option value="alpaca">Alpaca stocks</option>
+              <option value="disabled">Disabled</option>
+            </select>
+          </Field>
+          <Field v-if="isAlpaca" label="Feed">
+            <select v-model="config.feed">
+              <option value="iex">IEX realtime</option>
+              <option value="sip">SIP realtime (subscription required)</option>
+              <option value="delayed_sip">Delayed SIP</option>
+            </select>
+          </Field>
+          <Field v-if="isAlpaca" class="full" label="WebSocket endpoint" hint="ws:// or wss:// · remote endpoints must use WSS and be allowlisted">
+            <input class="mono" v-model.trim="config.endpoint" />
+          </Field>
+          <Field v-if="isAlpaca" label="Feed status" hint="read-only · derived from provider + feed">
+            <input class="mono" :value="config.feed_status" readonly />
+          </Field>
+          <Field class="full" label="Default symbols" hint="comma separated">
+            <input class="mono" v-model.trim="symbolsText" placeholder="XAUUSD or AAPL, MSFT, NVDA" />
+          </Field>
+          <Field label="Maximum symbols"><input class="mono" v-model.number="config.max_symbols" type="number" min="1" max="100" /></Field>
+          <Field label="Connection timeout (s)"><input class="mono" v-model.number="config.timeout_sec" type="number" min="1" max="60" /></Field>
+          <Field v-if="isAlpaca" label="API key env reference" :hint="config.api_key_configured ? 'configured' : 'no environment value'">
+            <input class="mono" v-model.trim="config.api_key_ref" placeholder="MARKET_DATA_ALPACA_KEY" />
+          </Field>
+          <Field v-if="isAlpaca" label="API secret env reference" :hint="config.api_secret_configured ? 'configured' : 'no environment value'">
+            <input class="mono" v-model.trim="config.api_secret_ref" placeholder="MARKET_DATA_ALPACA_SECRET" />
+          </Field>
+        </div>
+        <Notice :tone="isAlpaca ? 'warn' : 'neutral'">
+          <template v-if="isAlpaca">Alpaca supplies the watchlist and analysis only. Order risk and execution prices always come from the MT5 broker quote. API keys are stored as environment references, never as raw values.</template>
+          <template v-else>Order risk and execution always use the MT5 broker quote. This feed drives the watchlist display only. Keys are stored as environment references.</template>
+        </Notice>
+        <div class="row" style="gap: var(--sp-4)">
+          <Btn variant="secondary" icon="database" :loading="testing" :disabled="testing || saving" @click="testConnection">Test connection</Btn>
+          <Btn icon="save" :loading="saving" :disabled="saving || testing" @click="save">Save configuration</Btn>
+        </div>
+      </div>
+    </Panel>
+  </div>
 </template>
-
-<style scoped>
-.notice { margin-bottom: var(--sp-5); }
-.notice.success { background: var(--allow-bg); color: var(--allow-fg); }
-.notice.neutral { background: var(--neutral-bg); color: var(--neutral-fg); }
-.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 var(--sp-5); margin-top: var(--sp-6); }
-.span-2 { grid-column: span 2; }
-.field small { display: block; margin-top: var(--sp-2); color: var(--ink-muted); }
-.switch-row { display: flex; align-items: center; gap: var(--sp-3); min-height: 40px; }
-.switch-row input { width: auto; }
-.actions { display: flex; justify-content: flex-end; gap: var(--sp-4); margin-top: var(--sp-6); }
-@media (max-width: 620px) {
-  .form-grid { grid-template-columns: 1fr; }
-  .span-2 { grid-column: auto; }
-  .actions { flex-direction: column; }
-}
-</style>

@@ -106,11 +106,24 @@ class UserSessionRow(Base):
 
 class OrderRow(Base):
     __tablename__ = "orders"
+    __table_args__ = (
+        UniqueConstraint(
+            "mt5_account_id", "idempotency_key",
+            name="uq_orders_account_idempotency",
+        ),
+        UniqueConstraint(
+            "mt5_account_id", "dedupe_fingerprint",
+            name="uq_orders_account_dedupe",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    idempotency_key: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    mt5_account_id: Mapped[int] = mapped_column(
+        ForeignKey("mt5_accounts.id", ondelete="CASCADE"), index=True
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(128), index=True)
     dedupe_fingerprint: Mapped[str | None] = mapped_column(
-        String(128), unique=True, index=True, nullable=True
+        String(128), index=True, nullable=True
     )
     symbol: Mapped[str] = mapped_column(String(32), index=True)
     side: Mapped[str] = mapped_column(String(8))
@@ -141,6 +154,9 @@ class RiskDecisionRow(Base):
     __tablename__ = "risk_decisions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    mt5_account_id: Mapped[int] = mapped_column(
+        ForeignKey("mt5_accounts.id", ondelete="CASCADE"), index=True
+    )
     idempotency_key: Mapped[str | None] = mapped_column(String(128), index=True, nullable=True)
     symbol: Mapped[str] = mapped_column(String(32), index=True)
     decision: Mapped[str] = mapped_column(String(8))
@@ -155,6 +171,9 @@ class AuditLogRow(Base):
     __tablename__ = "audit_logs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    mt5_account_id: Mapped[int] = mapped_column(
+        ForeignKey("mt5_accounts.id", ondelete="CASCADE"), index=True
+    )
     idempotency_key: Mapped[str | None] = mapped_column(String(128), index=True, nullable=True)
     event: Mapped[str] = mapped_column(String(48), index=True)
     order_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -174,8 +193,16 @@ class PositionRow(Base):
     """Snapshot of an open position synced from MT5."""
 
     __tablename__ = "positions"
+    __table_args__ = (
+        UniqueConstraint(
+            "mt5_account_id", "ticket", name="uq_positions_account_ticket"
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    mt5_account_id: Mapped[int] = mapped_column(
+        ForeignKey("mt5_accounts.id", ondelete="CASCADE"), index=True
+    )
     ticket: Mapped[int] = mapped_column(Integer, index=True)
     symbol: Mapped[str] = mapped_column(String(32), index=True)
     side: Mapped[str] = mapped_column(String(8))
@@ -197,9 +224,17 @@ class ClosedTradeRow(Base):
     """
 
     __tablename__ = "closed_trades"
+    __table_args__ = (
+        UniqueConstraint(
+            "mt5_account_id", "ticket", name="uq_closed_trades_account_ticket"
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    ticket: Mapped[int] = mapped_column(Integer, unique=True, index=True)
+    mt5_account_id: Mapped[int] = mapped_column(
+        ForeignKey("mt5_accounts.id", ondelete="CASCADE"), index=True
+    )
+    ticket: Mapped[int] = mapped_column(Integer, index=True)
     symbol: Mapped[str] = mapped_column(String(32), index=True)
     side: Mapped[str | None] = mapped_column(String(8), nullable=True)
     volume: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -228,6 +263,9 @@ class WorkflowRunRow(Base):
     __tablename__ = "workflow_runs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    mt5_account_id: Mapped[int] = mapped_column(
+        ForeignKey("mt5_accounts.id", ondelete="CASCADE"), index=True
+    )
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     step: Mapped[str] = mapped_column(String(48), default="")
@@ -248,15 +286,14 @@ class LogRow(Base):
 
 
 class Mt5ConfigRow(Base):
-    """Singleton runtime MT5 bridge/account allowlist configuration."""
+    """Runtime MT5 bridge/account allowlist configuration for one account."""
 
     __tablename__ = "mt5_config"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
-    mt5_account_id: Mapped[int | None] = mapped_column(
-        ForeignKey("mt5_accounts.id", ondelete="SET NULL"),
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    mt5_account_id: Mapped[int] = mapped_column(
+        ForeignKey("mt5_accounts.id", ondelete="CASCADE"),
         unique=True,
-        nullable=True,
     )
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     bridge_type: Mapped[str] = mapped_column(String(16), default="mock")
@@ -275,8 +312,14 @@ class Mt5ConfigRow(Base):
 
 class StrategyConfigRow(Base):
     __tablename__ = "strategy_config"
+    __table_args__ = (
+        UniqueConstraint("mt5_account_id", name="uq_strategy_config_account"),
+    )
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    mt5_account_id: Mapped[int] = mapped_column(
+        ForeignKey("mt5_accounts.id", ondelete="CASCADE"), index=True
+    )
     enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     symbol: Mapped[str] = mapped_column(String(32), default="XAUUSD")
     preset_name: Mapped[str] = mapped_column(String(64), default="XAUUSD_D40_D20")
@@ -332,6 +375,9 @@ class AnalysisSnapshotRow(Base):
     __tablename__ = "analysis_snapshots"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    mt5_account_id: Mapped[int] = mapped_column(
+        ForeignKey("mt5_accounts.id", ondelete="CASCADE"), index=True
+    )
     correlation_id: Mapped[str] = mapped_column(String(64), index=True)
     capability: Mapped[str] = mapped_column(String(48), index=True)
     provider_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -371,8 +417,17 @@ class MarketDataConfigRow(Base):
 
 class TradeProposalRow(Base):
     __tablename__ = "trade_proposals"
+    __table_args__ = (
+        UniqueConstraint(
+            "mt5_account_id", "order_idempotency_key",
+            name="uq_trade_proposals_account_order_key",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    mt5_account_id: Mapped[int] = mapped_column(
+        ForeignKey("mt5_accounts.id", ondelete="CASCADE"), index=True
+    )
     status: Mapped[str] = mapped_column(String(32), index=True)
     symbol: Mapped[str] = mapped_column(String(32), index=True)
     side: Mapped[str] = mapped_column(String(8))
@@ -389,7 +444,7 @@ class TradeProposalRow(Base):
     risk_reasons: Mapped[list] = mapped_column(JSON, default=list)
     risk_warnings: Mapped[list] = mapped_column(JSON, default=list)
     order_idempotency_key: Mapped[str | None] = mapped_column(
-        String(128), nullable=True, unique=True
+        String(128), nullable=True
     )
     created_by: Mapped[str] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

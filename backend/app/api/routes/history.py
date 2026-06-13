@@ -9,7 +9,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.ai.service import AnalysisService
-from app.api.auth import get_operator
+from app.api.auth import get_auth_context, get_operator
+from app.auth.service import AuthContext
 from app.api.routes.analysis import analysis_result_to_dict
 from app.api.serializers import closed_trade_to_dict
 from app.bridge.base import get_configured_bridge
@@ -31,16 +32,21 @@ def history_trades(
     limit: int = 100,
     session: Session = Depends(get_db),
     operator: str = Depends(get_operator),
+    context: AuthContext = Depends(get_auth_context),
 ) -> list[dict]:
-    return [closed_trade_to_dict(t) for t in ClosedTradeRepository(session).list_recent(limit)]
+    return [
+        closed_trade_to_dict(t)
+        for t in ClosedTradeRepository(session, context.mt5_account_id or 1).list_recent(limit)
+    ]
 
 
 @router.get("/summary")
 def history_summary(
     session: Session = Depends(get_db),
     operator: str = Depends(get_operator),
+    context: AuthContext = Depends(get_auth_context),
 ) -> dict:
-    return ClosedTradeRepository(session).summary()
+    return ClosedTradeRepository(session, context.mt5_account_id or 1).summary()
 
 
 @router.get("/daily")
@@ -48,8 +54,11 @@ def history_daily(
     limit_days: int = 30,
     session: Session = Depends(get_db),
     operator: str = Depends(get_operator),
+    context: AuthContext = Depends(get_auth_context),
 ) -> list[dict]:
-    return ClosedTradeRepository(session).daily_breakdown(limit_days)
+    return ClosedTradeRepository(
+        session, context.mt5_account_id or 1
+    ).daily_breakdown(limit_days)
 
 
 @router.get("/review")
@@ -58,11 +67,14 @@ def history_review_queue(
     limit: int = 100,
     session: Session = Depends(get_db),
     operator: str = Depends(get_operator),
+    context: AuthContext = Depends(get_auth_context),
 ) -> list[dict]:
     """Losing closed trades — the post-trade review journal."""
     return [
         closed_trade_to_dict(t)
-        for t in ClosedTradeRepository(session).list_losing(
+        for t in ClosedTradeRepository(
+            session, context.mt5_account_id or 1
+        ).list_losing(
             limit, only_unreviewed=only_unreviewed
         )
     ]
@@ -73,6 +85,7 @@ def history_backfill(
     days: int = 30,
     session: Session = Depends(get_db),
     operator: str = Depends(get_operator),
+    context: AuthContext = Depends(get_auth_context),
 ) -> dict:
     """Catch up on historical closed trades from the bridge over the last N days.
 
@@ -87,10 +100,11 @@ def history_backfill(
     except Exception as exc:
         logger.warning("Backfill failed: %s", exc)
         raise HTTPException(status_code=502, detail=f"Bridge could not return history: {exc}")
-    repo = ClosedTradeRepository(session)
+    account_id = context.mt5_account_id or 1
+    repo = ClosedTradeRepository(session, account_id)
     order_by_ticket = {
         o.order_ticket: o
-        for o in OrderRepository(session).list_filled_with_ticket()
+        for o in OrderRepository(session, account_id).list_filled_with_ticket()
         if o.order_ticket is not None
     }
     inserted = repo.upsert_from_bridge(trades, order_by_ticket)
@@ -103,8 +117,11 @@ def history_save_review(
     body: TradeReview,
     session: Session = Depends(get_db),
     operator: str = Depends(get_operator),
+    context: AuthContext = Depends(get_auth_context),
 ) -> dict:
-    row = ClosedTradeRepository(session).save_review(
+    row = ClosedTradeRepository(
+        session, context.mt5_account_id or 1
+    ).save_review(
         ticket, note=body.note, reviewed_by=operator
     )
     if row is None:
@@ -117,11 +134,13 @@ def history_analyze_loss(
     ticket: int,
     session: Session = Depends(get_db),
     operator: str = Depends(get_operator),
+    context: AuthContext = Depends(get_auth_context),
 ) -> dict:
-    row = ClosedTradeRepository(session).get_by_ticket(ticket)
+    account_id = context.mt5_account_id or 1
+    row = ClosedTradeRepository(session, account_id).get_by_ticket(ticket)
     if row is None:
         raise HTTPException(status_code=404, detail=f"No closed trade with ticket {ticket}")
-    result = AnalysisService(session).analyze(
+    result = AnalysisService(session, mt5_account_id=account_id).analyze(
         "loss_review",
         (
             "Review this losing trade. Suggest a concise journal draft covering "

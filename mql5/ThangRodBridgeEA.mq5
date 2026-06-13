@@ -3,7 +3,7 @@
 //| Outbound TCP client for the ทางรอด backend.                      |
 //+------------------------------------------------------------------+
 #property strict
-#property version   "0.30"
+#property version   "1.000"
 #property description "Add BackendHost to Tools > Options > Expert Advisors > allowed addresses."
 
 #include <Trade/Trade.mqh>
@@ -12,6 +12,7 @@ input string BackendHost       = "127.0.0.1";
 input int    BackendPort       = 5555;
 input string BackendSharedSecret = "";
 input int    ConnectTimeoutMs  = 3000;
+input int    PollIntervalMs    = 100;
 input bool   AllowExecution    = false;
 input bool   AllowRealTrading  = false;
 input ulong  ExpertMagicNumber = 260611;
@@ -102,9 +103,26 @@ bool SendLine(const string line)
   {
    if(socket_handle==INVALID_HANDLE || !SocketIsConnected(socket_handle))
       return false;
-   char bytes[];
-   int length=StringToCharArray(line+"\n",bytes)-1;
-   return length>0 && SocketSend(socket_handle,bytes,length)==length;
+   uchar bytes[];
+   int length=StringToCharArray(line+"\n",bytes,0,WHOLE_ARRAY,CP_UTF8)-1;
+   if(length<=0)
+      return false;
+   int offset=0;
+   while(offset<length)
+     {
+      int remaining=length-offset;
+      uchar chunk[];
+      ArrayResize(chunk,remaining);
+      ArrayCopy(chunk,bytes,0,offset,remaining);
+      int sent=SocketSend(socket_handle,chunk,remaining);
+      if(sent<=0)
+        {
+         Print("SocketSend failed: ",GetLastError());
+         return false;
+        }
+      offset+=sent;
+     }
+   return true;
   }
 
 void SendResult(const string id,const string result)
@@ -233,11 +251,49 @@ string PositionsResult()
    return "{\"positions\":["+items+"]}";
   }
 
-string ClosedTradesResult()
+ENUM_TIMEFRAMES ParseTimeframe(const string timeframe)
   {
-   datetime now=TimeCurrent();
-   datetime day_start=StringToTime(TimeToString(now,TIME_DATE));
-   if(!HistorySelect(day_start,now))
+   if(timeframe=="M1") return PERIOD_M1;
+   if(timeframe=="M5") return PERIOD_M5;
+   if(timeframe=="M15") return PERIOD_M15;
+   if(timeframe=="M30") return PERIOD_M30;
+   if(timeframe=="H1") return PERIOD_H1;
+   if(timeframe=="H4") return PERIOD_H4;
+   if(timeframe=="D1") return PERIOD_D1;
+   return PERIOD_CURRENT;
+  }
+
+string CandlesResult(const string symbol,const string timeframe,const int requested_count)
+  {
+   ENUM_TIMEFRAMES period=ParseTimeframe(timeframe);
+   if(period==PERIOD_CURRENT && timeframe!="CURRENT")
+      return "";
+   int count=MathMax(1,MathMin(requested_count,5000));
+   MqlRates rates[];
+   ArraySetAsSeries(rates,false);
+   // Start at shift 1 so the still-forming bar never enters analysis.
+   int copied=CopyRates(symbol,period,1,count,rates);
+   if(copied<=0)
+      return "";
+   string items="";
+   for(int i=0;i<copied;i++)
+     {
+      if(items!="") items+=",";
+      items+="{"
+             "\"time_epoch\":"+IntegerToString((long)rates[i].time)+","
+             "\"open\":"+JsonNumber(rates[i].open)+","
+             "\"high\":"+JsonNumber(rates[i].high)+","
+             "\"low\":"+JsonNumber(rates[i].low)+","
+             "\"close\":"+JsonNumber(rates[i].close)+","
+             "\"volume\":"+IntegerToString((long)rates[i].tick_volume)+
+             "}";
+     }
+   return "{\"candles\":["+items+"]}";
+  }
+
+string ClosedTradesResult(const datetime start_time,const datetime end_time)
+  {
+   if(start_time<=0 || end_time<=start_time || !HistorySelect(start_time,end_time))
       return "";
    string items="";
    int total=HistoryDealsTotal();
@@ -253,10 +309,36 @@ string ClosedTradesResult()
                     +HistoryDealGetDouble(ticket,DEAL_COMMISSION)
                     +HistoryDealGetDouble(ticket,DEAL_SWAP)
                     +HistoryDealGetDouble(ticket,DEAL_FEE);
+      long deal_type=HistoryDealGetInteger(ticket,DEAL_TYPE);
+      string side=(deal_type==DEAL_TYPE_BUY ? "BUY" : "SELL");
+      ulong position_id=(ulong)HistoryDealGetInteger(ticket,DEAL_POSITION_ID);
+      datetime open_time=0;
+      double entry_price=0.0;
+      if(position_id>0 && HistorySelectByPosition(position_id))
+        {
+         int position_deals=HistoryDealsTotal();
+         for(int j=0;j<position_deals;j++)
+           {
+            ulong entry_ticket=HistoryDealGetTicket(j);
+            if(entry_ticket==0 || HistoryDealGetInteger(entry_ticket,DEAL_ENTRY)!=DEAL_ENTRY_IN)
+               continue;
+            open_time=(datetime)HistoryDealGetInteger(entry_ticket,DEAL_TIME);
+            entry_price=HistoryDealGetDouble(entry_ticket,DEAL_PRICE);
+            long entry_type=HistoryDealGetInteger(entry_ticket,DEAL_TYPE);
+            side=(entry_type==DEAL_TYPE_BUY ? "BUY" : "SELL");
+            break;
+           }
+         HistorySelect(start_time,end_time);
+        }
       if(items!="") items+=",";
       items+="{"
              "\"ticket\":"+IntegerToString((long)ticket)+","
              "\"symbol\":\""+JsonEscape(HistoryDealGetString(ticket,DEAL_SYMBOL))+"\","
+             "\"side\":\""+side+"\","
+             "\"volume\":"+JsonNumber(HistoryDealGetDouble(ticket,DEAL_VOLUME))+","
+             "\"entry_price\":"+JsonNumber(entry_price)+","
+             "\"exit_price\":"+JsonNumber(HistoryDealGetDouble(ticket,DEAL_PRICE))+","
+             "\"open_time_epoch\":"+IntegerToString((long)open_time)+","
              "\"profit\":"+JsonNumber(profit)+","
              "\"close_time_epoch\":"+IntegerToString(HistoryDealGetInteger(ticket,DEAL_TIME))+
              "}";
@@ -401,10 +483,28 @@ void HandleRequest(const string request)
       if(result=="") SendError(id,"quote unavailable"); else SendResult(id,result);
      }
    else if(method=="symbol_info") SendResult(id,SymbolInfoResult(JsonString(request,"symbol")));
+   else if(method=="candles")
+     {
+      string result=CandlesResult(
+         JsonString(request,"symbol"),
+         JsonString(request,"timeframe"),
+         (int)JsonDouble(request,"count",100)
+      );
+      if(result=="") SendError(id,"candles unavailable"); else SendResult(id,result);
+     }
    else if(method=="positions") SendResult(id,PositionsResult());
    else if(method=="closed_trades_today")
      {
-      string result=ClosedTradesResult();
+      datetime now=TimeCurrent();
+      datetime day_start=StringToTime(TimeToString(now,TIME_DATE));
+      string result=ClosedTradesResult(day_start,now);
+      if(result=="") SendError(id,"history unavailable"); else SendResult(id,result);
+     }
+   else if(method=="closed_trades_range")
+     {
+      datetime start_time=(datetime)JsonDouble(request,"start_epoch");
+      datetime end_time=(datetime)JsonDouble(request,"end_epoch");
+      string result=ClosedTradesResult(start_time,end_time);
       if(result=="") SendError(id,"history unavailable"); else SendResult(id,result);
      }
    else if(method=="execute_order") SendResult(id,ExecuteResult(request));
@@ -425,11 +525,11 @@ void ReadRequests()
    uint available=SocketIsReadable(socket_handle);
    if(available==0)
       return;
-   char data[];
+   uchar data[];
    int count=SocketRead(socket_handle,data,available,100);
    if(count<=0)
       return;
-   receive_buffer+=CharArrayToString(data,0,count);
+   receive_buffer+=CharArrayToString(data,0,count,CP_UTF8);
    int newline=StringFind(receive_buffer,"\n");
    while(newline>=0)
      {
@@ -445,7 +545,7 @@ int OnInit()
   {
    trade.SetExpertMagicNumber(ExpertMagicNumber);
    LoadStoredResults();
-   EventSetTimer(1);
+   EventSetMillisecondTimer(MathMax(50,MathMin(PollIntervalMs,1000)));
    EnsureConnected();
    return INIT_SUCCEEDED;
   }

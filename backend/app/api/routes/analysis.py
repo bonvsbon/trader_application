@@ -7,7 +7,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.ai.service import AnalysisResult, AnalysisService
-from app.api.auth import get_operator
+from app.api.auth import get_auth_context, get_operator
+from app.auth.service import AuthContext
 from app.persistence.db import get_db
 from app.persistence.repositories import AnalysisSnapshotRepository
 from app.providers.models import ANALYSIS_CAPABILITIES, AnalysisCapability
@@ -46,9 +47,12 @@ def run_analysis(
     body: AnalysisRunRequest,
     session: Session = Depends(get_db),
     operator: str = Depends(get_operator),
+    context: AuthContext = Depends(get_auth_context),
 ) -> dict:
     return analysis_result_to_dict(
-        AnalysisService(session).analyze(body.capability, body.prompt, body.context)
+        AnalysisService(
+            session, mt5_account_id=context.mt5_account_id or 1
+        ).analyze(body.capability, body.prompt, body.context)
     )
 
 
@@ -57,6 +61,7 @@ def analysis_snapshots(
     limit: int = 100,
     session: Session = Depends(get_db),
     operator: str = Depends(get_operator),
+    context: AuthContext = Depends(get_auth_context),
 ) -> list[dict]:
     return [
         {
@@ -73,7 +78,9 @@ def analysis_snapshots(
             "error": row.error,
             "created_at": row.created_at.isoformat(),
         }
-        for row in AnalysisSnapshotRepository(session).list_recent(
+        for row in AnalysisSnapshotRepository(
+            session, context.mt5_account_id or 1
+        ).list_recent(
             max(1, min(limit, 500))
         )
     ]

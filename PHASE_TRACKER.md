@@ -1,6 +1,6 @@
 # ทางรอด Phase Tracker
 
-Last updated: 2026-06-12
+Last updated: 2026-06-13
 
 Status legend:
 
@@ -16,10 +16,10 @@ Live MT5 and real-money use are not production-ready.
 
 Latest verification:
 
-- Backend: `136 passed`
+- Backend: `159 passed`
 - Backend lint: Ruff passed
 - Frontend: TypeScript check and production build passed
-- Database: Alembic revision `0011_identity_foundation` is at head
+- Database: Alembic revision `0012_account_scoped_trading` is at head
 - PostgreSQL: local PostgreSQL 16 database created and migrations verified
 - Runtime: backend/frontend online; API and market/workflow WebSockets verified
 
@@ -33,24 +33,30 @@ Latest verification:
 - `[x]` Real trading and auto-real are disabled by default
 - `[x]` Position sizing from equity, SL distance, and symbol contract data
 - `[~]` Real daily-loss, cooldown, volatility, and portfolio-risk inputs
-  Daily loss, cooldown, and SL-based portfolio risk are wired. Live news and
-  volatility adapters are not; mock providers are explicitly unavailable and
-  block real-account execution.
+  Daily loss, cooldown, SL-based portfolio risk, and MT5 candle-derived
+  volatility/session risk are wired. Live economic-calendar/news data remains.
 - `[x]` Fail-closed live news and volatility gates for real-money trading
   Real trading rejects mock/missing provider data; the UI reports unavailable
   feeds instead of presenting them as clear.
 - `[x]` Atomic idempotency and approval claims at the database layer
 - `[~]` Reconciliation after timeout, disconnect, or uncertain broker result
   Backend state, API, workflow polling, expiry alerts, and EA implementation
-  exist; MetaEditor compilation and demo-account verification remain.
-- `[~]` Authentication and authorization for sensitive APIs
+  exist; MetaEditor compilation and demo socket disconnect/reconnect verification
+  pass. Live broker ticket mapping and uncertain-order reconciliation remain.
+- `[x]` Authentication and authorization for sensitive APIs
   Browser sessions now use each owner's MT5 login number as the username, with
   a separate hashed app password, CSRF protection, lockout, and MT5 config
-  ownership. Multiple users remain blocked until all trading data is account-scoped.
+  ownership. Phase B scopes trading persistence, unique keys, services, and
+  repository/API reads by `mt5_account_id`; cross-account IDOR tests pass.
+  Multiple active MT5 connections remain blocked until Phase C BridgeRegistry.
 - `[x]` Authenticate the EA socket connection and enforce a production bind policy
   A required environment-managed shared secret authenticates the EA handshake.
   Remote binds require an explicit opt-in and a protected network/tunnel.
-- `[ ]` Live MQL5 EA integration tested on a demo account
+- `[x]` Live MQL5 EA integration tested on a demo account
+  On 2026-06-13, authenticated loopback connectivity passed against MetaQuotes-Demo
+  login `10011170709`: 10 full read cycles, listener restart/reconnect, then 10
+  more cycles. Account, quote, symbol contract, positions, 42 H1 closed candles,
+  and trade history were verified with execution and real trading disabled.
 
 ## Phase 1 - Foundation, Manual Trading, Demo Safety
 
@@ -134,10 +140,24 @@ strategy preset, and trade proposals.
   while the workflow scheduler runs. Checks are stale-aware, batch-limited,
   fail-isolated, and can also be triggered for all enabled providers from Settings.
 - `[x]` News provider port and mock provider
-- `[ ]` Real economic-calendar/news provider
+- `[x]` Real economic-calendar/news provider
+  The free `official_us` adapter reads the New York Fed economic indicators
+  calendar plus the Federal Reserve FOMC schedule without an API key. It
+  normalizes Eastern Time with DST, caches for 10 minutes, detects major
+  USD-sensitive releases, and fails closed on fetch/parse/staleness errors.
+  Runtime validation returns `provider=official_us` and `is_live=true`.
+  Dashboard and Risk Monitor display the upcoming high-impact USD event list
+  with Bangkok-localized dates, source attribution, and relative timing.
+  A strict routed MCP adapter remains available as an optional future source.
 - `[~]` News risk model
-  Domain model and BLOCK path exist; score and live event data do not.
-- `[ ]` Volatility and market-session provider
+  High-impact symbol-currency filtering, configurable before/after event window,
+  stale-data rejection, and BLOCK behavior are implemented and live-validated
+  against the free official US sources.
+- `[~]` Volatility and market-session provider
+  The MT5 adapter compares recent M15 ATR with a configurable historical median,
+  labels the UTC market session, and blocks configured-live operation when
+  candles are stale or insufficient. Weekend stale-data behavior is verified;
+  a market-open `is_live=true` runtime check remains.
 - `[x]` XAUUSD AI Analysis page
   Operators can run any supported capability, inspect the result, and review
   recent provider/tool provenance. This page is advisory-only.
@@ -178,10 +198,17 @@ Goal: run controlled automated workflows, reconcile MT5 state, learn from trade
 history, and prepare the system for reliable deployment.
 
 - `[~]` Full interval workflow
-  Read-only MT5 sync exists; analysis, proposal, risk, and execution steps do not.
+  MT5 sync, optional advisory analysis, deterministic signal/proposal generation,
+  risk evaluation, and opt-in auto-demo submission are wired. Live-provider and
+  market-open demo soak validation remain.
 - `[x]` Start/stop scheduler
 - `[x]` Countdown and manual trigger
-- `[ ]` Auto-demo execution through `OrderService`
+- `[~]` Auto-demo execution through `OrderService`
+  `WORKFLOW_AUTO_DEMO_ENABLED` is off by default and additionally requires
+  `TRADING_MODE=AUTO_DEMO`, a connected DEMO account, enabled/confirmed strategy,
+  a D40/D20 breakout, and an ALLOW verdict. Submission uses `source=auto` and a
+  deterministic closed-bar idempotency key; repeat-cycle deduplication is tested.
+  Live EA execution soak remains.
 - `[x]` Real-account approval queue
   Queue API/page, approve/reject actions, risk recheck, and expiry policy exist.
 - `[x]` Trade history with P&L and R multiple
@@ -225,14 +252,16 @@ history, and prepare the system for reliable deployment.
 - `[x]` Concurrent idempotency reservation and approval state claiming
 - `[~]` Authentication, authorization, and trusted actor identity
   First-owner bootstrap, login/logout/session expiry, CSRF, lockout, protected
-  APIs/WebSockets, and MT5 identity/config ownership are implemented. Phase B
-  still needs `mt5_account_id` on orders, positions, history, proposals,
-  strategy/workflow state, and their repository queries before multiple users
-  can be enabled safely.
+  APIs/WebSockets, MT5 identity/config ownership, account-scoped trading rows,
+  and IDOR regression tests are implemented. Multi-connection BridgeRegistry
+  and EA pairing remain before multiple users can be enabled.
 - `[~]` MQL5 EA implementation and demo soak test
   `mql5/ThangRodBridgeEA.mq5` implements the outbound socket client and protocol
-  handlers with a per-login persistent idempotency cache. MetaTrader/MetaEditor
-  is not installed in this workspace, so compile and demo soak testing remain.
+  handlers, including closed candles and ranged trade history, with a per-login
+  persistent idempotency cache. MetaEditor build 5836 compiles it with 0 errors
+  and 0 warnings. Authenticated DEMO read/reconnect soak passes on login
+  `10011170709`; execution and real trading remained disabled. A longer-running
+  execution/reconciliation soak is still required before production readiness.
 - `[~]` Docker support
   Backend/frontend Dockerfiles, Nginx proxy, PostgreSQL, health checks, and
   Compose configuration exist. Docker CLI is unavailable in this workspace, so
@@ -256,35 +285,32 @@ history, and prepare the system for reliable deployment.
   live tick (display only — the deterministic execution quote is unchanged) and
   the watchlist colours up/down ticks, so realtime behaviour is demonstrable
   without a live feed. Trend, volatility, AI bias, and persistence remain.
-- `[ ]` Realtime chart, timeframe selector, candles, indicators, and trade markers
+- `[~]` Realtime chart, timeframe selector, candles, indicators, and trade markers
+  The Chart page reads real MT5 closed candles, streams the broker mid price,
+  renders D40/D20 channels and proposal entry/SL/TP markers, and labels stale
+  weekend/closed-market ticks. More indicators and executed-trade markers remain.
 - `[ ]` Symbol search and instrument detail page
 - `[ ]` Pending-order sync, order modification, and position/order close flows
 - `[ ]` Manual risk override flow with explicit approval and audit log
 - `[x]` Full trade journal snapshots: entry/exit context, AI, risk, and exit reason
   Captured on closed trades and shown in the expandable History row. Live exit
-  prices/reasons depend on the EA supplying them (demo testing pending).
+  prices/reasons depend on the broker history supplied by the EA.
 
 ## Next Work Queue
 
-1. Continue Phase B of `EA_MULTI_USER_AUTH_PLAN.md`: scope every trading table,
-   unique key, service, and repository query by `mt5_account_id`, then add IDOR
-   tests before allowing creation of a second user.
-2. Compile the authenticated EA in MetaEditor and demo-test connectivity/recovery.
-3. Connect a routed MCP capability to a real economic-calendar/news source and
-   add volatility/session inputs.
-4. Live-test Open WebUI/Ollama and Alpaca credentials/feed entitlement on the
+1. Implement Phase C BridgeRegistry and EA pairing before enabling a second user.
+2. Verify the MT5 volatility/session adapter during market hours.
+3. Live-test Open WebUI/Ollama and Alpaca credentials/feed entitlement on the
    user's target machines.
-5. An idealized backtester now exists; next, demo-validate the D40/D20 Donchian
-   signal on real candles and add a live candle feed on the EA (`candles` RPC)
-   before relying on it.
-6. Live-test the OpenAI fallback with the operator's API key/model access;
+4. An idealized backtester now exists; next, demo-validate the D40/D20 Donchian
+   signal on the EA's real closed candles before relying on it.
+5. Live-test the OpenAI fallback with the operator's API key/model access;
    add Claude only if a second cloud vendor is still required.
-7. Add reconnect/backoff metrics and soak-test the external market-data stream;
+6. Add reconnect/backoff metrics and soak-test the external market-data stream;
    provider health monitoring is implemented but production alert delivery remains.
-8. Extend the interval workflow through analysis, proposal, risk, and auto-demo
-   execution (auto-demo now unblocked: signal → proposal exists, gate it on
-   `signal_definition_confirmed` + a demo account).
-9. Verify Docker images/Compose on a Docker host, then add deployment-grade
+7. Run a market-open auto-demo soak after live calendar and volatility clearance;
+   verify one-order-per-signal-bar behavior against the EA and broker history.
+8. Verify Docker images/Compose on a Docker host, then add deployment-grade
    user roles, metrics/alerts, secret management, and production controls.
 
 Update this file whenever a deliverable changes status. A checkbox should move to

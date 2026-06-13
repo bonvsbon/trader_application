@@ -21,6 +21,13 @@ class QuoteBridge:
         )
 
 
+class PartialQuoteBridge(QuoteBridge):
+    def quote(self, symbol: str) -> SymbolQuote:
+        if symbol == "NVDA":
+            raise RuntimeError("MQL5 EA error: quote unavailable")
+        return super().quote(symbol)
+
+
 def test_market_websocket_streams_requested_symbols(monkeypatch):
     monkeypatch.setattr(ws, "get_configured_bridge", lambda: QuoteBridge())
     monkeypatch.setattr(
@@ -36,3 +43,21 @@ def test_market_websocket_streams_requested_symbols(monkeypatch):
     assert payload["source"] == "mt5:ea_socket"
     assert [quote["symbol"] for quote in payload["quotes"]] == ["XAUUSD", "AAPL"]
     assert payload["errors"] == []
+
+
+def test_market_websocket_explains_unavailable_broker_symbol(monkeypatch):
+    monkeypatch.setattr(ws, "get_configured_bridge", lambda: PartialQuoteBridge())
+    monkeypatch.setattr(
+        ws,
+        "get_effective_mt5_config",
+        lambda: SimpleNamespace(bridge_type="ea_socket"),
+    )
+
+    with TestClient(create_app()) as client:
+        with client.websocket_connect("/ws/market?symbols=XAUUSD,NVDA") as socket:
+            payload = socket.receive_json()
+
+    assert [quote["symbol"] for quote in payload["quotes"]] == ["XAUUSD"]
+    assert payload["errors"][0]["symbol"] == "NVDA"
+    assert payload["errors"][0]["code"] == "broker_symbol_unavailable"
+    assert "Alpaca IEX" in payload["errors"][0]["hint"]

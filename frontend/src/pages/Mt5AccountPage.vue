@@ -1,6 +1,16 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { onMounted, ref, computed } from "vue";
 import { api, type Mt5Configuration } from "../api/client";
+import PageHead from "../components/ui/PageHead.vue";
+import Panel from "../components/ui/Panel.vue";
+import Badge from "../components/ui/Badge.vue";
+import Btn from "../components/ui/Btn.vue";
+import Kv from "../components/ui/Kv.vue";
+import Field from "../components/ui/Field.vue";
+import Toggle from "../components/ui/Toggle.vue";
+import Notice from "../components/ui/Notice.vue";
+import Reasons from "../components/ui/Reasons.vue";
+import { badgeClass } from "../components/ui/badge";
 
 const account = ref<any>(null);
 const config = ref<Mt5Configuration | null>(null);
@@ -10,6 +20,8 @@ const testing = ref(false);
 const error = ref<string | null>(null);
 const message = ref<string | null>(null);
 
+const isReal = computed(() => config.value?.expected_account_type === "REAL");
+
 function errorText(value: any, fallback: string) {
   return value?.response?.data?.detail ?? value?.message ?? fallback;
 }
@@ -17,10 +29,7 @@ function errorText(value: any, fallback: string) {
 async function load() {
   loading.value = true;
   try {
-    const [accountResult, configResult] = await Promise.all([
-      api.account(),
-      api.accountConfiguration(),
-    ]);
+    const [accountResult, configResult] = await Promise.all([api.account(), api.accountConfiguration()]);
     account.value = accountResult;
     config.value = configResult;
     error.value = null;
@@ -35,17 +44,12 @@ async function save() {
   if (!config.value) return;
   if (
     config.value.bridge_type === "ea_socket" &&
-    (!config.value.expected_login ||
-      !config.value.expected_server ||
-      config.value.expected_account_type === "UNKNOWN")
+    (!config.value.expected_login || !config.value.expected_server || config.value.expected_account_type === "UNKNOWN")
   ) {
     error.value = "Live EA bridge requires expected login, server, and DEMO/REAL account type.";
     return;
   }
-  const confirmed = window.confirm(
-    "Save MT5 configuration? The workflow will stop and the bridge will restart.",
-  );
-  if (!confirmed) return;
+  if (!window.confirm("Save MT5 configuration? The workflow will stop and the bridge will restart.")) return;
   saving.value = true;
   message.value = null;
   try {
@@ -81,160 +85,77 @@ onMounted(load);
 </script>
 
 <template>
-  <div class="page-head row between">
-    <div>
-      <h2>MT5 Account</h2>
-      <p class="sub">Connection status and editable account allowlist configuration.</p>
+  <div class="stack">
+    <PageHead title="MT5 Account" sub="Connection status and bridge configuration">
+      <template #actions>
+        <Badge v-if="account" :tone="badgeClass(account.bridge_health)">{{ account.bridge_health }}</Badge>
+        <Btn sm variant="secondary" icon="refresh" :loading="loading" @click="load">Refresh</Btn>
+      </template>
+    </PageHead>
+
+    <Notice v-if="error">{{ error }}</Notice>
+    <Notice v-if="message" tone="success">{{ message }}</Notice>
+
+    <div v-if="loading && !config" class="grid">
+      <div class="panel panel-pad" v-for="i in 2" :key="i"><div class="sk-line" style="width: 35%" /><div class="sk-line" style="width: 70%; margin-top: 8px" /><div class="sk-line" style="width: 55%; margin-top: 8px" /></div>
     </div>
-    <button class="btn secondary sm" @click="load" :disabled="loading">Refresh</button>
+
+    <template v-else>
+      <div v-if="account" class="grid">
+        <Panel title="Connection">
+          <Kv k="Bridge health"><Badge :tone="badgeClass(account.bridge_health)">{{ account.bridge_health }}</Badge></Kv>
+          <Kv k="Config match"><Badge :tone="account.configuration_match ? 'allow' : 'block'" no-dot>{{ account.configuration_match ? "MATCH" : "MISMATCH" }}</Badge></Kv>
+          <Kv k="Last heartbeat" :v="account.last_heartbeat ? new Date(account.last_heartbeat).toLocaleTimeString() : '—'" mono />
+          <Kv k="Detail"><span class="faint" style="font-weight: 400; font-size: var(--text-xs)">{{ account.detail || "—" }}</span></Kv>
+          <Reasons v-if="account.configuration_problems?.length" :items="account.configuration_problems" />
+        </Panel>
+
+        <Panel v-if="account.account" title="Connected account">
+          <template #action><Badge :tone="badgeClass(account.account.account_type)">{{ account.account.account_type }}</Badge></template>
+          <Kv k="Login" :v="account.account.login ?? '—'" mono />
+          <Kv k="Server" :v="account.account.server ?? '—'" mono />
+          <Kv k="Balance" :v="`${account.account.balance?.toLocaleString()} ${account.account.currency ?? ''}`" mono />
+          <Kv k="Equity" :v="account.account.equity?.toLocaleString()" mono tone="pos" />
+          <Kv k="Free margin" :v="`${account.account.free_margin?.toLocaleString()} (${account.account.free_margin_pct}%)`" mono />
+          <Kv k="Leverage" :v="`1:${account.account.leverage}`" mono />
+        </Panel>
+      </div>
+
+      <Panel v-if="config" title="Runtime configuration">
+        <div class="stack">
+          <Toggle label="Bridge enabled" sub="Master switch for the MT5 connection" :checked="config.enabled" @change="config.enabled = $event" />
+          <div class="form-grid">
+            <Field label="Bridge type">
+              <select v-model="config.bridge_type">
+                <option value="mock">Mock (local testing)</option>
+                <option value="ea_socket">EA socket (MT5)</option>
+              </select>
+            </Field>
+            <Field label="Request timeout (s)"><input class="mono" v-model.number="config.timeout_sec" type="number" min="0.1" max="60" step="0.1" /></Field>
+            <Field label="Backend listen host"><input class="mono" v-model.trim="config.host" placeholder="127.0.0.1" /></Field>
+            <Field label="Backend listen port"><input class="mono" v-model.number="config.port" type="number" min="1" max="65535" /></Field>
+            <Field label="Heartbeat max age (s)"><input class="mono" v-model.number="config.heartbeat_max_age_sec" type="number" min="1" max="300" /></Field>
+            <Field label="Expected MT5 login"><input class="mono" v-model.number="config.expected_login" type="number" min="1" placeholder="Required for EA socket" /></Field>
+            <Field label="Expected server"><input class="mono" v-model.trim="config.expected_server" placeholder="Broker-Demo" /></Field>
+            <Field label="Expected account type">
+              <select v-model="config.expected_account_type">
+                <option value="UNKNOWN">Not restricted (mock only)</option>
+                <option value="DEMO">DEMO</option>
+                <option value="REAL">REAL</option>
+              </select>
+            </Field>
+          </div>
+          <Notice :tone="isReal ? 'warn' : 'neutral'">
+            <template v-if="isReal">REAL selected. Choosing REAL does not enable live trading on its own — execution still requires the safety flags and per-order approval. Passwords are never stored; the EA shared secret is read from an environment variable.</template>
+            <template v-else>Passwords are never stored. The EA shared secret (<code>MT5_EA_SHARED_SECRET</code>) is supplied via an environment variable, never through this form. Source: {{ config.source ?? "database" }}<span v-if="config.updated_by"> · updated by {{ config.updated_by }}</span>.</template>
+          </Notice>
+          <div class="row" style="gap: var(--sp-4)">
+            <Btn variant="secondary" icon="plug" :loading="testing" :disabled="testing || saving" @click="testConnection">Test current connection</Btn>
+            <Btn icon="save" :variant="isReal ? 'danger' : undefined" :loading="saving" :disabled="saving || testing" @click="save">Save and restart bridge</Btn>
+          </div>
+          <span class="hint">EA shared secret: {{ config.ea_shared_secret_configured ? "configured" : "not configured" }}. Selecting REAL does not enable real trading — safety flags and operator authentication remain mandatory.</span>
+        </div>
+      </Panel>
+    </template>
   </div>
-
-  <div v-if="error" class="notice">{{ error }}</div>
-  <div v-if="message" class="notice success">{{ message }}</div>
-
-  <div v-if="loading" class="grid">
-    <div class="panel" v-for="i in 3" :key="i">
-      <div class="skeleton sk-line" style="width: 35%"></div>
-      <div class="skeleton sk-line" style="width: 70%"></div>
-      <div class="skeleton sk-line" style="width: 55%"></div>
-    </div>
-  </div>
-
-  <template v-else>
-    <div v-if="account" class="grid status-grid">
-      <section class="panel">
-        <div class="panel-head"><span class="panel-title">Connection</span></div>
-        <div class="kv"><span class="label">Bridge health</span><span class="value"><span class="badge" :class="account.bridge_health">{{ account.bridge_health }}</span></span></div>
-        <div class="kv"><span class="label">Config match</span><span class="value"><span class="badge" :class="account.configuration_match ? 'ALLOW' : 'BLOCK'">{{ account.configuration_match ? "MATCH" : "MISMATCH" }}</span></span></div>
-        <div class="kv"><span class="label">Last heartbeat</span><span class="value mono">{{ account.last_heartbeat ? new Date(account.last_heartbeat).toLocaleTimeString() : "—" }}</span></div>
-        <div class="kv"><span class="label">Detail</span><span class="value muted">{{ account.detail || "—" }}</span></div>
-        <ul v-if="account.configuration_problems?.length" class="reasons">
-          <li v-for="problem in account.configuration_problems" :key="problem">{{ problem }}</li>
-        </ul>
-      </section>
-
-      <section class="panel" v-if="account.account">
-        <div class="panel-head">
-          <span class="panel-title">Connected Account</span>
-          <span class="badge" :class="account.account.account_type">{{ account.account.account_type }}</span>
-        </div>
-        <div class="kv"><span class="label">Login</span><span class="value mono">{{ account.account.login ?? "—" }}</span></div>
-        <div class="kv"><span class="label">Server</span><span class="value">{{ account.account.server ?? "—" }}</span></div>
-        <div class="kv"><span class="label">Balance</span><span class="value mono">{{ account.account.balance?.toLocaleString() }} {{ account.account.currency }}</span></div>
-        <div class="kv"><span class="label">Equity</span><span class="value mono">{{ account.account.equity?.toLocaleString() }}</span></div>
-        <div class="kv"><span class="label">Free margin</span><span class="value mono">{{ account.account.free_margin?.toLocaleString() }} ({{ account.account.free_margin_pct }}%)</span></div>
-        <div class="kv"><span class="label">Leverage</span><span class="value mono">1:{{ account.account.leverage }}</span></div>
-      </section>
-    </div>
-
-    <section v-if="config" class="panel config-panel">
-      <div class="panel-head">
-        <div>
-          <span class="panel-title">Runtime Configuration</span>
-          <p class="config-meta">
-            Source: {{ config.source ?? "database" }}
-            <span v-if="config.updated_by"> · Updated by {{ config.updated_by }}</span>
-          </p>
-        </div>
-        <label class="switch-row">
-          <input v-model="config.enabled" type="checkbox" />
-          <span>Enabled</span>
-        </label>
-      </div>
-
-      <div class="notice neutral">
-        MT5 password is never accepted or stored here. Sign in inside MT5 Terminal;
-        this config defines which connected account is allowed to trade.
-        EA socket authentication uses <code>MT5_EA_SHARED_SECRET</code>, which
-        must match the EA input and is never stored in this form.
-      </div>
-
-      <div class="form-grid">
-        <div class="field">
-          <label>Bridge type</label>
-          <select v-model="config.bridge_type">
-            <option value="mock">Mock (local testing)</option>
-            <option value="ea_socket">EA socket (MT5)</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Backend listen host</label>
-          <input v-model.trim="config.host" placeholder="127.0.0.1" />
-        </div>
-        <div class="field">
-          <label>Backend listen port</label>
-          <input v-model.number="config.port" type="number" min="1" max="65535" />
-        </div>
-        <div class="field">
-          <label>Request timeout (seconds)</label>
-          <input v-model.number="config.timeout_sec" type="number" min="0.1" max="60" step="0.1" />
-        </div>
-        <div class="field">
-          <label>Heartbeat max age (seconds)</label>
-          <input v-model.number="config.heartbeat_max_age_sec" type="number" min="1" max="300" />
-        </div>
-        <div class="field">
-          <label>Expected MT5 login</label>
-          <input v-model.number="config.expected_login" type="number" min="1" placeholder="Required for EA socket" />
-        </div>
-        <div class="field">
-          <label>Expected MT5 server</label>
-          <input v-model.trim="config.expected_server" placeholder="Broker-Demo" />
-        </div>
-        <div class="field">
-          <label>Expected account type</label>
-          <select v-model="config.expected_account_type">
-            <option value="UNKNOWN">Not restricted (mock only)</option>
-            <option value="DEMO">DEMO</option>
-            <option value="REAL">REAL</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="config-actions">
-        <button class="btn secondary" @click="testConnection" :disabled="testing || saving">
-          <span v-if="testing" class="spin"></span>
-          Test current connection
-        </button>
-        <button class="btn" @click="save" :disabled="saving || testing">
-          <span v-if="saving" class="spin"></span>
-          Save and restart bridge
-        </button>
-      </div>
-      <p class="muted safety-note">
-        Selecting REAL does not enable real trading. Backend safety flags and operator
-        authentication remain mandatory.
-        EA shared secret:
-        {{ config.ea_shared_secret_configured ? "configured" : "not configured" }}.
-      </p>
-    </section>
-  </template>
 </template>
-
-<style scoped>
-.status-grid { margin-bottom: var(--sp-6); }
-.config-panel { margin-top: var(--sp-6); }
-.config-meta { margin-top: var(--sp-2); color: var(--ink-muted); font-size: var(--text-xs); }
-.form-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 0 var(--sp-6);
-  margin-top: var(--sp-7);
-}
-.switch-row { display: flex; align-items: center; gap: var(--sp-4); cursor: pointer; }
-.switch-row input { width: auto; }
-.config-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--sp-4);
-  margin-top: var(--sp-4);
-}
-.notice { margin-bottom: var(--sp-5); }
-.notice.success { background: var(--allow-bg); color: var(--allow-fg); }
-.notice.neutral { background: var(--neutral-bg); color: var(--neutral-fg); }
-.safety-note { margin-top: var(--sp-5); text-align: right; font-size: var(--text-xs); }
-@media (max-width: 640px) {
-  .config-actions { flex-direction: column-reverse; }
-  .config-actions .btn { width: 100%; }
-}
-</style>

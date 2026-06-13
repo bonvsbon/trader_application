@@ -107,13 +107,26 @@ def _sanitize(value, *, depth: int = 0):
 class AnalysisService:
     """The only runtime entry point for AI/MCP analysis."""
 
-    def __init__(self, session: Session, settings: Settings | None = None) -> None:
+    def __init__(
+        self,
+        session: Session,
+        settings: Settings | None = None,
+        *,
+        mt5_account_id: int = 1,
+    ) -> None:
         self.session = session
         self.settings = settings or get_settings()
         self.providers = AnalysisProviderRepository(session)
-        self.snapshots = AnalysisSnapshotRepository(session)
+        self.snapshots = AnalysisSnapshotRepository(session, mt5_account_id)
 
-    def analyze(self, capability: str, prompt: str, context: dict) -> AnalysisResult:
+    def analyze(
+        self,
+        capability: str,
+        prompt: str,
+        context: dict,
+        *,
+        allowed_provider_types: set[str] | None = None,
+    ) -> AnalysisResult:
         if capability not in ANALYSIS_CAPABILITIES:
             raise ValueError(f"Unsupported analysis capability: {capability}")
         correlation_id = uuid4().hex
@@ -127,6 +140,11 @@ class AnalysisService:
             summary=None,
         )
         chain = capability_routes(self.providers.list_all())[capability]
+        if allowed_provider_types is not None:
+            chain = [
+                row for row in chain
+                if row.provider_type in allowed_provider_types
+            ]
         if not chain:
             self.snapshots.record(
                 correlation_id=correlation_id,

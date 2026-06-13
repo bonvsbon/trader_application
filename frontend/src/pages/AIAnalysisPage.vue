@@ -5,6 +5,18 @@ import {
   type AnalysisCapability,
   type AnalysisRunResult,
 } from "../api/client";
+import PageHead from "../components/ui/PageHead.vue";
+import Panel from "../components/ui/Panel.vue";
+import Badge from "../components/ui/Badge.vue";
+import Btn from "../components/ui/Btn.vue";
+import Field from "../components/ui/Field.vue";
+import Notice from "../components/ui/Notice.vue";
+import EmptyState from "../components/ui/EmptyState.vue";
+
+const CAPABILITIES: AnalysisCapability[] = [
+  "news_search", "economic_calendar", "chart_market",
+  "volatility_session", "proposal_explanation", "loss_review",
+];
 
 const capability = ref<AnalysisCapability>("chart_market");
 const prompt = ref("Summarize the supplied market context and identify risks. Do not place an order.");
@@ -21,6 +33,7 @@ async function loadSnapshots() {
 async function run() {
   running.value = true;
   error.value = null;
+  result.value = null;
   try {
     const context = JSON.parse(contextText.value);
     result.value = await api.runAnalysis(capability.value, prompt.value, context);
@@ -38,89 +51,76 @@ onMounted(() => loadSnapshots().catch(() => undefined));
 </script>
 
 <template>
-  <div class="page-head">
-    <h2>AI Analysis</h2>
-    <p class="sub">Run advisory analysis through the enabled provider route and inspect provenance.</p>
-  </div>
+  <div class="stack">
+    <PageHead title="AI Analysis" sub="Advisory analysis via provider routing — never places orders">
+      <template #actions><Badge tone="accent" no-dot>advisory only</Badge></template>
+    </PageHead>
 
-  <div v-if="error" class="notice">{{ error }}</div>
+    <Notice v-if="error">{{ error }}</Notice>
 
-  <div class="analysis-grid">
-    <section class="panel">
-      <div class="field">
-        <label>Capability</label>
-        <select v-model="capability">
-          <option value="news_search">News search</option>
-          <option value="economic_calendar">Economic calendar</option>
-          <option value="chart_market">Chart / market</option>
-          <option value="volatility_session">Volatility / session</option>
-          <option value="proposal_explanation">Proposal explanation</option>
-          <option value="loss_review">Loss review</option>
-        </select>
-      </div>
-      <div class="field">
-        <label>Prompt</label>
-        <textarea v-model="prompt" rows="5"></textarea>
-      </div>
-      <div class="field">
-        <label>Context JSON</label>
-        <textarea v-model="contextText" rows="10" class="mono"></textarea>
-      </div>
-      <button class="btn full" @click="run" :disabled="running">
-        <span v-if="running" class="spin"></span>
-        Run advisory analysis
-      </button>
-    </section>
+    <div class="ai-cols">
+      <Panel title="Request">
+        <div class="stack">
+          <Field label="Capability">
+            <div class="chips">
+              <span v-for="c in CAPABILITIES" :key="c" class="chip" :data-on="capability === c" @click="capability = c">{{ c }}</span>
+            </div>
+          </Field>
+          <Field label="Prompt"><textarea v-model="prompt" style="min-height: 84px" /></Field>
+          <Field label="Context JSON"><textarea v-model="contextText" class="code" style="min-height: 96px" /></Field>
+          <Notice tone="neutral">Analysis is advisory and is recorded for provenance. Seed prompts with “Do not place an order.”</Notice>
+          <Btn icon="sparkle" :loading="running" :disabled="running" @click="run">Run advisory analysis</Btn>
+        </div>
+      </Panel>
 
-    <section class="panel">
-      <div class="panel-head">
-        <span class="panel-title">Result</span>
-        <span v-if="result" class="badge" :class="result.available ? 'ALLOW' : 'UNKNOWN'">
-          {{ result.available ? "AVAILABLE" : "NO PROVIDER" }}
-        </span>
-      </div>
-      <p v-if="result?.summary" class="result-copy">{{ result.summary }}</p>
-      <p v-else class="muted">Run an analysis to see the provider response.</p>
-      <div v-if="result" class="meta">
-        <div class="kv"><span class="label">Provider</span><span class="value">{{ result.provider_name ?? "—" }}</span></div>
-        <div class="kv"><span class="label">Model / tool</span><span class="value mono">{{ result.model_or_tool ?? "—" }}</span></div>
-        <div class="kv"><span class="label">Correlation</span><span class="value mono">{{ result.correlation_id }}</span></div>
-      </div>
-    </section>
-  </div>
-
-  <section class="panel snapshots">
-    <div class="panel-head">
-      <span class="panel-title">Recent Analysis Attempts</span>
-      <button class="btn secondary sm" @click="loadSnapshots">Refresh</button>
+      <Panel title="Result">
+        <EmptyState v-if="!result && !running" icon="sparkle" title="No analysis yet" desc="Pick a capability and run a request to see the advisory result and its provenance." />
+        <div v-else-if="running" class="empty">
+          <span class="spin" style="width: 26px; height: 26px; border-width: 3px" />
+          <div class="et" style="margin-top: 8px">Routing to provider…</div>
+          <div class="ed">Resolving {{ capability }} through the capability chain</div>
+        </div>
+        <div v-else-if="result" class="fade-in stack">
+          <div class="row between">
+            <Badge :tone="result.available ? 'allow' : 'block'" lg>{{ result.available ? "AVAILABLE" : "NO PROVIDER" }}</Badge>
+            <span class="chip" data-on="true">{{ result.capability }}</span>
+          </div>
+          <p v-if="result.summary" style="margin: 0; line-height: 1.6; font-size: var(--text-base); white-space: pre-wrap">{{ result.summary }}</p>
+          <p v-else class="muted" style="margin: 0; font-size: var(--text-sm)">No summary returned by the provider route.</p>
+          <hr class="hr" />
+          <div class="meta-grid">
+            <div><div class="m-k">Provider</div><div class="m-v">{{ result.provider_name ?? "—" }}</div></div>
+            <div><div class="m-k">Model / tool</div><div class="m-v mono">{{ result.model_or_tool ?? "—" }}</div></div>
+            <div><div class="m-k">Correlation id</div><div class="m-v mono">{{ result.correlation_id }}</div></div>
+          </div>
+        </div>
+      </Panel>
     </div>
-    <div v-if="snapshots.length" class="table-wrap">
-      <table>
-        <thead><tr><th>Time</th><th>Capability</th><th>Provider</th><th>Model / tool</th><th>Status</th><th>Detail</th></tr></thead>
-        <tbody>
-          <tr v-for="item in snapshots" :key="item.id">
-            <td class="mono muted">{{ new Date(item.created_at).toLocaleString() }}</td>
-            <td>{{ item.capability }}</td>
-            <td>{{ item.provider_name ?? "—" }}</td>
-            <td class="mono">{{ item.model_or_tool ?? "—" }}</td>
-            <td><span class="badge" :class="item.success ? 'ALLOW' : 'BLOCK'">{{ item.success ? "OK" : "FAILED" }}</span></td>
-            <td class="detail">{{ item.success ? item.output_summary : item.error }}</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-    <p v-else class="muted">No analysis attempts recorded.</p>
-  </section>
+
+    <Panel title="Recent analysis attempts" :pad="false">
+      <template #action><Btn sm variant="secondary" icon="refresh" @click="loadSnapshots">Refresh</Btn></template>
+      <div v-if="snapshots.length" class="table-wrap" style="padding: var(--sp-3)">
+        <table class="tbl">
+          <thead><tr><th>Time</th><th>Capability</th><th>Provider</th><th>Model / tool</th><th>Status</th><th>Detail</th></tr></thead>
+          <tbody>
+            <tr v-for="item in snapshots" :key="item.id" class="hoverable">
+              <td class="mono muted">{{ new Date(item.created_at).toLocaleString() }}</td>
+              <td>{{ item.capability }}</td>
+              <td>{{ item.provider_name ?? "—" }}</td>
+              <td class="mono">{{ item.model_or_tool ?? "—" }}</td>
+              <td><Badge :tone="item.success ? 'allow' : 'block'">{{ item.success ? "OK" : "FAILED" }}</Badge></td>
+              <td class="muted detail">{{ item.success ? item.output_summary : item.error }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <EmptyState v-else icon="analysis" title="No analysis attempts recorded" desc="Advisory runs and their provenance appear here." />
+    </Panel>
+  </div>
 </template>
 
 <style scoped>
-.notice { margin-bottom: var(--sp-5); }
-.analysis-grid { display: grid; grid-template-columns: minmax(300px, 0.9fr) minmax(0, 1.1fr); gap: var(--sp-6); }
-.result-copy { white-space: pre-wrap; line-height: 1.65; }
-.meta { margin-top: var(--sp-6); padding-top: var(--sp-5); border-top: 1px solid var(--border); }
-.snapshots { margin-top: var(--sp-6); }
+.ai-cols { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-6); align-items: start; }
+@media (max-width: 880px) { .ai-cols { grid-template-columns: 1fr; } }
 .detail { max-width: 420px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-@media (max-width: 900px) {
-  .analysis-grid { grid-template-columns: 1fr; }
-}
 </style>

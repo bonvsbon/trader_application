@@ -38,7 +38,7 @@ def strategy_configuration(
     svc: OrderService = Depends(get_order_service),
     operator: str = Depends(get_operator),
 ) -> dict:
-    repository = StrategyConfigRepository(svc.session)
+    repository = StrategyConfigRepository(svc.session, svc.mt5_account_id)
     row = repository.get()
     config = repository.get_config() or default_strategy_config(svc.settings)
     return {
@@ -60,8 +60,10 @@ def update_strategy_configuration(
             status_code=422,
             detail="Strategy risk exceeds the global maximum risk per trade",
         )
-    row = StrategyConfigRepository(svc.session).save(config, updated_by=operator)
-    AuditRepository(svc.session).write(
+    row = StrategyConfigRepository(
+        svc.session, svc.mt5_account_id
+    ).save(config, updated_by=operator)
+    AuditRepository(svc.session, svc.mt5_account_id).write(
         event="strategy.configuration_updated",
         symbol=config.symbol,
         strategy_reason=config.preset_name,
@@ -170,7 +172,9 @@ def recent_proposals(
 ) -> list[dict]:
     return [
         proposal_to_dict(row)
-        for row in TradeProposalRepository(svc.session).list_recent(limit)
+        for row in TradeProposalRepository(
+            svc.session, svc.mt5_account_id
+        ).list_recent(limit)
     ]
 
 

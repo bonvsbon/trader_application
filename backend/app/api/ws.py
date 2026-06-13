@@ -59,6 +59,28 @@ def _simulated_tick(quote: SymbolQuote, walk: dict[str, float]) -> dict:
     }
 
 
+def _mt5_quote_error(symbol: str, exc: Exception) -> dict:
+    message = (str(exc) or type(exc).__name__)[:300]
+    lowered = message.lower()
+    if "quote unavailable" in lowered or "symbol" in lowered:
+        return {
+            "symbol": symbol,
+            "error": message,
+            "code": "broker_symbol_unavailable",
+            "hint": (
+                "This exact symbol is unavailable from the connected MT5 broker. "
+                "Use the broker's symbol name (it may include a suffix) or configure "
+                "Alpaca IEX in Market Data for US stocks."
+            ),
+        }
+    return {
+        "symbol": symbol,
+        "error": message,
+        "code": "mt5_quote_failed",
+        "hint": "Check the MT5 bridge connection and confirm the symbol is visible in Market Watch.",
+    }
+
+
 @router.websocket("/ws/status")
 async def ws_status(websocket: WebSocket) -> None:
     if not _websocket_authenticated(websocket):
@@ -148,6 +170,10 @@ async def ws_market(
     bridge_type = get_effective_mt5_config().bridge_type
     source = f"mt5:{bridge_type}"
     simulate_live = bridge_type == "mock"
+    # A real bridge (e.g. ea_socket) serializes every RPC over one connection,
+    # so a 1s watchlist tick starves heavier reads (dashboard/risk preview).
+    # The mock bridge is in-memory, so it can stream fast for a lively demo.
+    tick_seconds = 1.0 if simulate_live else 2.5
     walk: dict[str, float] = {}
     try:
         while True:
@@ -162,7 +188,7 @@ async def ws_market(
                         else quote.model_dump(mode="json")
                     )
                 except Exception as exc:
-                    errors.append({"symbol": symbol, "error": str(exc)[:300]})
+                    errors.append(_mt5_quote_error(symbol, exc))
             await websocket.send_json(
                 {
                     "source": source,
@@ -171,6 +197,6 @@ async def ws_market(
                     "errors": errors,
                 }
             )
-            await asyncio.sleep(1)
+            await asyncio.sleep(tick_seconds)
     except WebSocketDisconnect:
         return

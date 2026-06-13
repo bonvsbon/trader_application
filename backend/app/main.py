@@ -22,6 +22,7 @@ from app.api.routes import (
     dashboard,
     history,
     logs,
+    market,
     orders,
     risk,
     settings as settings_routes,
@@ -67,6 +68,7 @@ def create_app() -> FastAPI:
         workflow,
         logs,
         history,
+        market,
     ):
         app.include_router(module.router, dependencies=[Depends(get_operator)])
     app.include_router(ws.router)

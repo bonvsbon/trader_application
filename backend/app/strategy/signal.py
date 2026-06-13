@@ -20,6 +20,7 @@ Risk Engine. Automatic generation stays gated behind
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from app.core.enums import OrderSide
 from app.core.logging import get_logger
@@ -37,6 +38,7 @@ class DonchianSignal:
     side: OrderSide
     breakout_level: float  # the channel level that was broken
     stop_loss: float
+    candle_time: datetime
     reason: str
 
 
@@ -64,6 +66,7 @@ def evaluate_donchian(candles: list[Candle], d40: int, d20: int) -> DonchianSign
             side=OrderSide.BUY,
             breakout_level=highest,
             stop_loss=sl,
+            candle_time=latest.time,
             reason=f"Close {latest.close} broke {d40}-bar high {highest}; SL at {d20}-bar low {sl}",
         )
     if latest.close < lowest:
@@ -74,6 +77,7 @@ def evaluate_donchian(candles: list[Candle], d40: int, d20: int) -> DonchianSign
             side=OrderSide.SELL,
             breakout_level=lowest,
             stop_loss=sl,
+            candle_time=latest.time,
             reason=f"Close {latest.close} broke {d40}-bar low {lowest}; SL at {d20}-bar high {sl}",
         )
     return None
@@ -94,7 +98,9 @@ class SignalService:
         self.proposals = proposal_service
         self.order_service = proposal_service.order_service
         self.settings = proposal_service.settings
-        self.strategy_configs = StrategyConfigRepository(proposal_service.session)
+        self.strategy_configs = StrategyConfigRepository(
+            proposal_service.session, self.order_service.mt5_account_id
+        )
 
     def evaluate(self, *, created_by: str) -> SignalResult:
         config = self.strategy_configs.get_config() or default_strategy_config(self.settings)
@@ -117,11 +123,28 @@ class SignalService:
         if signal is None:
             return SignalResult(None, None, "No D40/D20 breakout on the latest closed bar")
 
+        candle_time = signal.candle_time
+        if candle_time.tzinfo is None:
+            candle_time = candle_time.replace(tzinfo=timezone.utc)
+        candle_key = candle_time.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        order_key = (
+            f"auto-signal-{config.symbol.lower()}-"
+            f"{self.settings.strategy_timeframe.lower()}-{candle_key}"
+        )
+        existing = self.proposals.proposals.get_by_order_key(order_key)
+        if existing is not None:
+            return SignalResult(
+                signal,
+                existing,
+                "Signal already has a proposal for this closed bar",
+            )
+
         proposal = self.proposals.generate(
             side=signal.side,
             sl=signal.stop_loss,
             volume=None,
             strategy_reason=f"D40/D20 Donchian breakout — {signal.reason}",
             created_by=created_by,
+            order_idempotency_key=order_key,
         )
         return SignalResult(signal, proposal, "Signal generated a trade proposal")

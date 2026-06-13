@@ -3,10 +3,17 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from app.bridge.mock_bridge import MockBridge
-from app.core.enums import OrderSide, OrderState
-from app.domain.models import OrderRequest
+from app.core.enums import OrderSide, OrderState, TradingMode
+from app.domain.models import Candle, OrderRequest, StrategyPresetConfig
 from app.execution.order_service import OrderService
-from app.persistence.repositories import AuditRepository, LogRepository
+from app.persistence.entities import AnalysisProviderRow
+from app.persistence.repositories import (
+    AuditRepository,
+    LogRepository,
+    OrderRepository,
+    StrategyConfigRepository,
+    TradeProposalRepository,
+)
 from app.workflow.runner import WorkflowRunner
 
 
@@ -122,3 +129,75 @@ def test_workflow_provider_health_failure_is_advisory(
     assert summary["errors"] == []
     assert summary["provider_health"]["checked"] == 0
     assert summary["provider_health"]["error"] == "provider monitor unavailable"
+
+
+def test_auto_demo_submits_once_per_closed_signal_bar(
+    session,
+    make_settings,
+    monkeypatch,
+):
+    settings = make_settings(
+        trading_mode=TradingMode.AUTO_DEMO,
+        workflow_auto_demo_enabled=True,
+        strategy_timeframe="H1",
+    )
+    closed_at = datetime(2026, 6, 12, 12, 0, tzinfo=timezone.utc)
+    candles = [
+        Candle(time=closed_at - timedelta(hours=4), open=2350, high=2351, low=2349, close=2350),
+        Candle(time=closed_at - timedelta(hours=3), open=2350, high=2351, low=2349, close=2350),
+        Candle(time=closed_at - timedelta(hours=2), open=2350, high=2351, low=2349, close=2350),
+        Candle(time=closed_at - timedelta(hours=1), open=2350, high=2352, low=2349, close=2351),
+        Candle(time=closed_at, open=2351, high=2361, low=2358, close=2360),
+    ]
+    bridge = MockBridge(settings=settings, candles=candles)
+    StrategyConfigRepository(session).save(
+        StrategyPresetConfig(
+            enabled=True,
+            d40_value=3,
+            d20_value=2,
+            require_news_clear=False,
+            signal_definition_confirmed=True,
+        ),
+        updated_by="tester",
+    )
+    session.add(
+        AnalysisProviderRow(
+            display_name="Workflow advisory",
+            provider_type="local",
+            enabled=True,
+            endpoint="http://127.0.0.1:3000",
+            model_name="test-model",
+            timeout_sec=5,
+            priority=1,
+            capabilities=["proposal_explanation"],
+            allowed_tools=[],
+            capability_tools={},
+            health="HEALTHY",
+        )
+    )
+    session.flush()
+
+    async def skip_health_refresh(session, settings):
+        return {"checked": 0, "healthy": 0, "unhealthy": 0}
+
+    monkeypatch.setattr(
+        "app.workflow.runner.refresh_provider_health",
+        skip_health_refresh,
+    )
+    monkeypatch.setattr(
+        "app.ai.service.OpenWebUIProvider.analyze",
+        lambda self, prompt, context: {
+            "summary": "Deterministic strategy advisory context",
+            "confidence": 0.5,
+        },
+    )
+    runner = WorkflowRunner(bridge=bridge, settings=settings)
+
+    first = runner.run_once(session)
+    second = runner.run_once(session)
+
+    assert first["auto_demo"]["status"] == "submitted"
+    assert first["auto_demo"]["order_state"] == OrderState.FILLED.value
+    assert second["auto_demo"]["status"] == "already_processed"
+    assert len(OrderRepository(session).list_recent()) == 1
+    assert len(TradeProposalRepository(session).list_recent()) == 1

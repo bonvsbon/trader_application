@@ -130,7 +130,7 @@ def account_configuration(
     operator: str = Depends(get_operator),
     context: AuthContext = Depends(get_auth_context),
 ) -> dict:
-    repository = Mt5ConfigRepository(session)
+    repository = Mt5ConfigRepository(session, context.mt5_account_id or 1)
     row = repository.get()
     _ensure_config_owner(row, context)
     config = repository.get_config() or get_effective_mt5_config()
@@ -144,11 +144,11 @@ def update_account_configuration(
     operator: str = Depends(get_operator),
     context: AuthContext = Depends(get_auth_context),
 ) -> dict:
-    repository = Mt5ConfigRepository(session)
+    repository = Mt5ConfigRepository(session, context.mt5_account_id or 1)
     _ensure_config_owner(repository.get(), context)
     _ensure_config_matches_login(config, context)
     row = repository.save(config, updated_by=operator)
-    AuditRepository(session).write(
+    AuditRepository(session, context.mt5_account_id or 1).write(
         event="mt5.configuration_updated",
         payload={
             **config.model_dump(mode="json"),

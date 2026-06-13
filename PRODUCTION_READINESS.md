@@ -4,8 +4,9 @@ Real-money trading remains blocked until every required item is complete.
 
 ## Safety
 
-- [ ] Live economic-calendar provider is healthy and stale-data tested.
-- [ ] Live volatility/session provider is healthy and stale-data tested.
+- [x] Free official-US economic calendar is healthy and stale/failure tested.
+- [ ] Live volatility/session provider is healthy during market hours.
+      MT5 stale-data/weekend fail-closed behavior is tested.
 - [ ] D40/D20 signal semantics are approved and covered by deterministic tests.
 - [ ] Emergency stop is tested from UI and environment configuration.
 - [ ] Daily loss, cooldown, portfolio risk, and spread limits are demo-verified.
@@ -13,10 +14,11 @@ Real-money trading remains blocked until every required item is complete.
 
 ## MT5
 
-- [ ] EA compiles without warnings in MetaEditor.
-- [ ] Shared-secret authentication rejects invalid clients.
-- [ ] Expected login, server, and DEMO account type match.
-- [ ] Disconnect, timeout, restart, and reconciliation soak tests pass.
+- [x] EA compiles without warnings in MetaEditor.
+- [x] Shared-secret authentication rejects invalid clients.
+- [x] Expected login, server, and DEMO account type match.
+- [x] Disconnect and listener restart/reconnect read soak tests pass.
+- [ ] Timeout and uncertain-order reconciliation soak tests pass.
 - [ ] Deal/order/position ticket mapping is verified against the broker.
 - [ ] `AllowRealTrading` remains disabled in the EA until final approval.
 
@@ -36,3 +38,4 @@ Real-money trading remains blocked until every required item is complete.
 - [ ] Log retention and incident response ownership are defined.
 - [ ] Deployment rollback has been rehearsed.
 - [ ] Demo soak period and acceptance criteria are complete.
+      Auto-demo is implemented but remains disabled pending live provider gates.

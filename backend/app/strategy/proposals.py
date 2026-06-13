@@ -27,9 +27,10 @@ class ProposalService:
         self.order_service = order_service
         self.session = order_service.session
         self.settings = order_service.settings
-        self.proposals = TradeProposalRepository(self.session)
-        self.strategy_configs = StrategyConfigRepository(self.session)
-        self.audit = AuditRepository(self.session)
+        account_id = order_service.mt5_account_id
+        self.proposals = TradeProposalRepository(self.session, account_id)
+        self.strategy_configs = StrategyConfigRepository(self.session, account_id)
+        self.audit = AuditRepository(self.session, account_id)
 
     def generate(
         self,
@@ -41,6 +42,7 @@ class ProposalService:
         created_by: str,
         ai_summary: str | None = None,
         ai_confidence: float | None = None,
+        order_idempotency_key: str | None = None,
     ) -> TradeProposalRow:
         config = self.strategy_configs.get_config() or default_strategy_config(self.settings)
         if not config.enabled:
@@ -101,7 +103,9 @@ class ProposalService:
             )
 
         if ai_summary is None:
-            analysis = AnalysisService(self.session, self.settings).analyze(
+            analysis = AnalysisService(
+                self.session, self.settings, mt5_account_id=self.order_service.mt5_account_id
+            ).analyze(
                 "proposal_explanation",
                 (
                     "Explain this trade proposal concisely. Identify supporting facts, "
@@ -144,6 +148,7 @@ class ProposalService:
             risk_decision=risk.decision.value,
             risk_reasons=list(risk.reasons),
             risk_warnings=list(risk.warnings),
+            order_idempotency_key=order_idempotency_key,
             created_by=created_by,
             expires_at=datetime.now(timezone.utc)
             + timedelta(minutes=self.settings.proposal_expiry_minutes),
@@ -166,7 +171,13 @@ class ProposalService:
         )
         return row
 
-    def submit(self, proposal_id: int, *, submitted_by: str) -> OrderResult:
+    def submit(
+        self,
+        proposal_id: int,
+        *,
+        submitted_by: str,
+        source: str = "manual",
+    ) -> OrderResult:
         row = self.proposals.get(proposal_id)
         if row is None:
             raise ProposalError(f"No trade proposal with id {proposal_id}")
@@ -186,7 +197,7 @@ class ProposalService:
             tp=row.tp,
             risk_pct=row.risk_pct,
             idempotency_key=key,
-            source="manual",
+            source=source,
             strategy_reason=row.strategy_reason,
             ai_reason=row.ai_summary,
             requested_by=submitted_by,

@@ -2,7 +2,10 @@ import axios from "axios";
 
 // Relative baseURL: the Vite dev server proxies /api and /ws to the backend.
 const apiToken = import.meta.env.VITE_API_TOKEN as string | undefined;
-const configuredTimeoutMs = Number(import.meta.env.VITE_API_TIMEOUT_MS ?? 10000);
+// The live MT5 EA bridge services its socket on a timer, so a risk preview is
+// several seconds of serialized RPCs. Allow generous headroom over the mock
+// bridge's instant responses; override with VITE_API_TIMEOUT_MS if needed.
+const configuredTimeoutMs = Number(import.meta.env.VITE_API_TIMEOUT_MS ?? 30000);
 const apiTimeoutMs =
   Number.isFinite(configuredTimeoutMs) && configuredTimeoutMs > 0
     ? configuredTimeoutMs
@@ -271,6 +274,22 @@ export interface MarketDataConfiguration {
   updated_at?: string | null;
 }
 
+export interface Candle {
+  time: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+export interface MarketCandles {
+  symbol: string;
+  timeframe: string;
+  candles: Candle[];
+  error?: string;
+}
+
 export interface AnalysisRunResult {
   available: boolean;
   capability: AnalysisCapability;
@@ -374,6 +393,13 @@ export const api = {
     http.post<OrderResult>("/api/orders/reconcile", { idempotency_key }).then((r) => r.data),
   recentOrders: () => http.get("/api/orders/recent").then((r) => r.data),
   pendingApprovals: () => http.get("/api/orders/pending-approval").then((r) => r.data),
+
+  marketCandles: (symbol: string, timeframe: string, count = 200) =>
+    http
+      .get<MarketCandles>("/api/market/candles", {
+        params: { symbol, timeframe, count },
+      })
+      .then((r) => r.data),
 
   logs: () => http.get("/api/logs").then((r) => r.data),
   audit: () => http.get("/api/logs/audit").then((r) => r.data),

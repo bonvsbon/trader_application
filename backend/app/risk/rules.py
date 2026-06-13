@@ -72,6 +72,12 @@ def rule_spread(ctx: RiskContext, s: Settings) -> list[Finding]:
 
 
 def rule_volatility(ctx: RiskContext, s: Settings) -> list[Finding]:
+    if s.volatility_provider != "mock" and not ctx.volatility.is_live:
+        return [Finding(
+            RiskDecision.BLOCK,
+            f"Live volatility/session data unavailable: "
+            f"{ctx.volatility.summary or 'provider returned no current data'}",
+        )]
     if ctx.abnormal_volatility:
         return [Finding(RiskDecision.BLOCK, "Abnormal volatility detected")]
     return []

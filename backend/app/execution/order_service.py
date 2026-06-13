@@ -62,6 +62,7 @@ class OrderService:
         risk_engine: RiskEngine | None = None,
         news_provider: NewsProviderPort | None = None,
         volatility_provider: VolatilityProviderPort | None = None,
+        mt5_account_id: int = 1,
     ) -> None:
         self.session = session
         self.bridge = bridge
@@ -69,9 +70,10 @@ class OrderService:
         self.risk_engine = risk_engine or RiskEngine(self.settings)
         self.news_provider = news_provider
         self.volatility_provider = volatility_provider
-        self.orders = OrderRepository(session)
-        self.audit = AuditRepository(session)
-        self.risk_repo = RiskRepository(session)
+        self.mt5_account_id = mt5_account_id
+        self.orders = OrderRepository(session, mt5_account_id)
+        self.audit = AuditRepository(session, mt5_account_id)
+        self.risk_repo = RiskRepository(session, mt5_account_id)
         self.logs = LogRepository(session)
 
     # ── Public API ────────────────────────────────────────────────────────────

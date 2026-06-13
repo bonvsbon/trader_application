@@ -184,8 +184,13 @@ npm run build
 
 ## ข้อจำกัดปัจจุบัน
 
-- MQL5 EA ยังต้อง compile และทดสอบใน MetaEditor/MT5 จริง
-- Live economic calendar และ volatility provider ยังไม่เชื่อม
+- MQL5 EA compile ผ่านและ authenticated DEMO read/reconnect soak ผ่านแล้ว;
+  execution/reconciliation soak ยังไม่ครบ
+- Free official-US calendar จาก New York Fed + Federal Reserve เชื่อมจริงแล้ว
+  โดยไม่ใช้ API key พร้อม cache และ stale/failure fail-closed;
+  MT5 volatility/session adapter ยังต้องยืนยัน `is_live=true` ช่วงตลาดเปิด
+- Auto-demo workflow พร้อมแบบ opt-in (`WORKFLOW_AUTO_DEMO_ENABLED=false`
+  โดย default) และ dedupe ต่อ closed signal bar แล้ว แต่ยังไม่เปิด live soak
 - Alpaca และ OpenAI ต้องใช้ credential ของผู้ใช้เพื่อทดสอบจริง
 - Docker Compose ยังต้องทดสอบบนเครื่องที่มี Docker
 - ห้ามเปิด Real Trading จนกว่า Production Readiness Checklist จะผ่านครบ

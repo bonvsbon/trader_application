@@ -9,6 +9,7 @@ from app.core.enums import OrderSide
 from app.domain.models import OrderRequest
 from app.execution.idempotency import make_idempotency_key
 from app.execution.order_service import OrderService
+from app.news.base import upcoming_news_events
 from app.workflow.scheduler import get_scheduler
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
@@ -48,6 +49,10 @@ def dashboard(svc: OrderService = Depends(get_order_service)) -> dict:
             "summary": ctx.news.summary,
             "provider": ctx.news.provider,
             "is_live": ctx.news.is_live,
+            "events": upcoming_news_events(
+                svc.news_provider,
+                req.symbol,
+            ),
         },
         "volatility": {
             "abnormal": ctx.volatility.abnormal,

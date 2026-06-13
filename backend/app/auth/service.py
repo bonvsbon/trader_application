@@ -144,7 +144,7 @@ class AuthService:
                     account_type=account_type,
                     display_name=f"{mt5_server.strip()} / {mt5_login}",
                 )
-                Mt5ConfigRepository(self.session).bind_account(account.id)
+                Mt5ConfigRepository(self.session, account.id).bind_account(account.id)
         except IntegrityError as exc:
             raise AuthError("MT5 login or account is already registered") from exc
         return self._create_session(user.id)

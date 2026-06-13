@@ -162,7 +162,9 @@ class BacktestService:
     def __init__(self, order_service) -> None:
         self.order_service = order_service
         self.settings = order_service.settings
-        self.strategy_configs = StrategyConfigRepository(order_service.session)
+        self.strategy_configs = StrategyConfigRepository(
+            order_service.session, order_service.mt5_account_id
+        )
 
     def run(self, *, count: int) -> BacktestResult:
         config = self.strategy_configs.get_config() or default_strategy_config(self.settings)

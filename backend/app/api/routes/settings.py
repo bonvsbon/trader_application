@@ -9,7 +9,8 @@ import time
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.auth import get_operator
+from app.api.auth import get_auth_context, get_operator
+from app.auth.service import AuthContext
 from app.core.config import Settings, get_settings
 from app.market_data.alpaca import (
     MarketDataConnectionError,
@@ -29,6 +30,10 @@ from app.providers.models import ANALYSIS_CAPABILITIES, AnalysisProviderConfig
 from app.providers.routing import capability_routes
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
+
+
+def _audit_repository(session: Session, context: AuthContext) -> AuditRepository:
+    return AuditRepository(session, context.mt5_account_id or 1)
 
 
 def _provider_dict(row: AnalysisProviderRow) -> dict:
@@ -128,12 +133,13 @@ def create_analysis_provider(
     config: AnalysisProviderConfig,
     session: Session = Depends(get_db),
     operator: str = Depends(get_operator),
+    context: AuthContext = Depends(get_auth_context),
 ) -> dict:
     repository = AnalysisProviderRepository(session)
     if repository.get_by_name(config.display_name):
         raise HTTPException(status_code=409, detail="Provider display name already exists")
     row = repository.save(config, updated_by=operator)
-    AuditRepository(session).write(
+    _audit_repository(session, context).write(
         event="provider.configuration_created",
         payload={
             **config.model_dump(mode="json"),
@@ -188,9 +194,10 @@ def update_market_data_configuration(
     config: MarketDataConfig,
     session: Session = Depends(get_db),
     operator: str = Depends(get_operator),
+    context: AuthContext = Depends(get_auth_context),
 ) -> dict:
     row = MarketDataConfigRepository(session).save(config, updated_by=operator)
-    AuditRepository(session).write(
+    _audit_repository(session, context).write(
         event="market_data.configuration_updated",
         payload={
             **config.model_dump(mode="json"),
@@ -206,6 +213,7 @@ async def test_market_data_configuration(
     session: Session = Depends(get_db),
     operator: str = Depends(get_operator),
     settings: Settings = Depends(get_settings),
+    context: AuthContext = Depends(get_auth_context),
 ) -> dict:
     repository = MarketDataConfigRepository(session)
     config = repository.get_config() or default_market_data_config(settings)
@@ -242,7 +250,7 @@ async def test_market_data_configuration(
             "feed_status": config.feed_status,
             "error": (str(exc) or type(exc).__name__)[:2000],
         }
-    AuditRepository(session).write(
+    _audit_repository(session, context).write(
         event="market_data.connection_tested",
         payload={**result, "tested_by": operator},
     )
@@ -255,6 +263,7 @@ def update_analysis_provider(
     config: AnalysisProviderConfig,
     session: Session = Depends(get_db),
     operator: str = Depends(get_operator),
+    context: AuthContext = Depends(get_auth_context),
 ) -> dict:
     repository = AnalysisProviderRepository(session)
     row = _get_or_404(repository, provider_id)
@@ -262,7 +271,7 @@ def update_analysis_provider(
     if duplicate and duplicate.id != provider_id:
         raise HTTPException(status_code=409, detail="Provider display name already exists")
     row = repository.save(config, updated_by=operator, row=row)
-    AuditRepository(session).write(
+    _audit_repository(session, context).write(
         event="provider.configuration_updated",
         payload={
             **config.model_dump(mode="json"),
@@ -280,10 +289,11 @@ def delete_analysis_provider(
     provider_id: int,
     session: Session = Depends(get_db),
     operator: str = Depends(get_operator),
+    context: AuthContext = Depends(get_auth_context),
 ) -> None:
     repository = AnalysisProviderRepository(session)
     row = _get_or_404(repository, provider_id)
-    AuditRepository(session).write(
+    _audit_repository(session, context).write(
         event="provider.configuration_deleted",
         payload={
             "provider_id": row.id,
@@ -301,11 +311,12 @@ async def test_analysis_provider(
     session: Session = Depends(get_db),
     operator: str = Depends(get_operator),
     settings: Settings = Depends(get_settings),
+    context: AuthContext = Depends(get_auth_context),
 ) -> dict:
     repository = AnalysisProviderRepository(session)
     row = _get_or_404(repository, provider_id)
     result = await check_provider_health(row, repository, settings)
-    AuditRepository(session).write(
+    _audit_repository(session, context).write(
         event="provider.connection_tested",
         payload={
             "provider_id": row.id,
@@ -322,9 +333,10 @@ async def test_enabled_analysis_providers(
     session: Session = Depends(get_db),
     operator: str = Depends(get_operator),
     settings: Settings = Depends(get_settings),
+    context: AuthContext = Depends(get_auth_context),
 ) -> dict:
     result = await refresh_provider_health(session, settings, force=True)
-    AuditRepository(session).write(
+    _audit_repository(session, context).write(
         event="provider.health_batch_tested",
         payload={
             "checked": result["checked"],

@@ -12,6 +12,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.bridge.base import (
+    close_configured_bridge,
+    default_mt5_config,
+    replace_configured_bridge,
+)
 from app.bridge.mock_bridge import MockBridge
 from app.core.config import Settings, get_settings
 from app.domain.models import NewsRisk, VolatilityRisk
@@ -47,10 +52,18 @@ _LIVE_VOLATILITY = _LiveVolatilityProvider()
 
 @pytest.fixture(autouse=True)
 def isolate_runtime_auth_config(monkeypatch):
-    """Tests opt into user auth explicitly instead of inheriting the local .env."""
+    """Tests opt into live integrations explicitly instead of inheriting local .env."""
     monkeypatch.setenv("USER_AUTH_ENABLED", "false")
+    monkeypatch.setenv("MT5_BRIDGE_TYPE", "mock")
+    monkeypatch.setenv("MT5_EXPECTED_LOGIN", "1000001")
+    monkeypatch.setenv("MT5_EXPECTED_SERVER", "Mock-Server")
+    monkeypatch.setenv("MT5_EXPECTED_ACCOUNT_TYPE", "DEMO")
+    monkeypatch.setenv("NEWS_PROVIDER", "mock")
+    monkeypatch.setenv("VOLATILITY_PROVIDER", "mock")
     get_settings.cache_clear()
+    replace_configured_bridge(default_mt5_config(get_settings()))
     yield
+    close_configured_bridge()
     get_settings.cache_clear()
 
 

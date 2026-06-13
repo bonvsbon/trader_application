@@ -10,6 +10,7 @@ from app.core.enums import OrderSide
 from app.domain.models import OrderRequest
 from app.execution.idempotency import make_idempotency_key
 from app.execution.order_service import OrderService
+from app.news.base import upcoming_news_events
 
 router = APIRouter(prefix="/api/risk", tags=["risk"])
 
@@ -114,6 +115,11 @@ def risk_status(
             "news_high_impact": ctx.news.has_high_impact_within_window,
             "news_provider": ctx.news.provider,
             "news_is_live": ctx.news.is_live,
+            "news_summary": ctx.news.summary,
+            "news_events": upcoming_news_events(
+                svc.news_provider,
+                req.symbol,
+            ),
             "volatility_provider": ctx.volatility.provider,
             "volatility_is_live": ctx.volatility.is_live,
             "config_problems": ctx.config_problems,

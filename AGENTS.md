@@ -8,7 +8,7 @@
 ## 1. สรุปโปรเจกต์ (Project Summary)
 - ชื่อโปรเจกต์/ชื่อแอป: **ทางรอด**
 - ทำอะไร: เว็บแอป trading เชื่อม **MetaTrader 5** รองรับ manual + auto trading เริ่มที่ **XAUUSD** (ขยาย symbol อื่นได้) เน้น **safety-first**
-- สถานะปัจจุบัน: **Phase 1 safety + Phase 2 analysis/proposal + multi-user Phase A identity** — browser login ใช้ MT5 login + app password แยก, มี session/CSRF/MT5 config ownership; ยังไม่เปิดหลาย user จนกว่าจะ scope trading data ครบ; ยังไม่พร้อม live MT5/เงินจริง; ดู `PHASE_TRACKER.md`
+- สถานะปัจจุบัน: **Phase 1 safety + Phase 2 analysis/proposal + multi-user Phase B account scope** — browser login ใช้ MT5 login + app password แยก, trading persistence/query scope ด้วย `mt5_account_id` และมี IDOR tests; ยังไม่เปิดหลาย user จนกว่า Phase C BridgeRegistry/EA pairing เสร็จ; ยังไม่พร้อม live MT5/เงินจริง; ดู `PHASE_TRACKER.md`
 
 ## 2. โหมดงาน (Work Modes)
 
@@ -56,7 +56,7 @@
 ```
 
 ## 6. Known Issues / Gotchas
-- Default ยังใช้ **mock bridge** — `ea_socket` และ MQL5 EA มี implementation แล้ว แต่ยังไม่ผ่าน MetaEditor compile/demo soak test (กฎ: bridge ไม่พร้อม → block)
+- Default ยังใช้ **mock bridge** — `ea_socket` และ MQL5 EA compile ผ่าน MetaEditor; authenticated DEMO read/reconnect soak ผ่าน 2026-06-13 แต่ execution/reconciliation soak ยังไม่ครบ (กฎ: bridge ไม่พร้อม → block)
 - MT5 account/bridge config แก้ได้จาก UI และเก็บใน DB; app ไม่รับ/ไม่เก็บ password และ login/server/type ไม่ตรง → block
 - Local `.env` ใช้ PostgreSQL; ถ้า `DATABASE_URL` ว่างจะ fallback เป็น SQLite
 - safety flags (`ALLOW_REAL_TRADING`, `ALLOW_AUTO_REAL_FULL`, `EMERGENCY_STOP`) ต้องตั้งครบหลายตัว auto-real ถึงทำงาน — default ปิดหมด
@@ -64,7 +64,7 @@
 ## 7. TODO หลัก (เป้าใหญ่)
 - Phase 2: connect routed MCP to live News/volatility, OpenAI/Claude adapters,
   periodic provider health checks และ live-validate Open WebUI/Alpaca credentials
-- Multi-user Phase B-D: ใส่ `mt5_account_id` ใน trading data/repositories, multi-connection BridgeRegistry, EA pairing/device token; ห้ามสร้าง user คนที่สองก่อน Phase B เสร็จ
+- Multi-user Phase C-D: multi-connection BridgeRegistry, EA pairing/device token; ห้ามเปิด user คนที่สองก่อน Phase C เสร็จ
 - Phase 3: full scheduler, auto-demo exec, MQL5 demo validation, markdown memory เต็ม, metrics/alerts, secret management
 
 ---

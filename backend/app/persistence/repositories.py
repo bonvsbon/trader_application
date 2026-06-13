@@ -154,18 +154,23 @@ class UserSessionRepository:
 
 
 class OrderRepository:
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, mt5_account_id: int = 1) -> None:
         self.session = session
+        self.mt5_account_id = mt5_account_id
 
     def get_by_key(self, idempotency_key: str) -> OrderRow | None:
         return self.session.scalar(
-            select(OrderRow).where(OrderRow.idempotency_key == idempotency_key)
+            select(OrderRow).where(
+                OrderRow.mt5_account_id == self.mt5_account_id,
+                OrderRow.idempotency_key == idempotency_key,
+            )
         )
 
     def create(self, req: OrderRequest, *, state: str, decision: str,
                account_type: str, trading_mode: str,
                dedupe_fingerprint: str | None = None) -> OrderRow:
         row = OrderRow(
+            mt5_account_id=self.mt5_account_id,
             idempotency_key=req.idempotency_key,
             dedupe_fingerprint=dedupe_fingerprint,
             symbol=req.symbol,
@@ -218,6 +223,7 @@ class OrderRepository:
             if conflict is None:
                 conflict = self.session.scalar(
                     select(OrderRow).where(
+                        OrderRow.mt5_account_id == self.mt5_account_id,
                         OrderRow.dedupe_fingerprint == dedupe_fingerprint
                     )
                 )
@@ -258,7 +264,10 @@ class OrderRepository:
         return list(
             self.session.scalars(
                 select(OrderRow)
-                .where(OrderRow.order_ticket.is_not(None))
+                .where(
+                    OrderRow.mt5_account_id == self.mt5_account_id,
+                    OrderRow.order_ticket.is_not(None),
+                )
                 .order_by(OrderRow.id.desc())
                 .limit(limit)
             )
@@ -267,7 +276,11 @@ class OrderRepository:
     def claim_state(self, row_id: int, *, expected: str, new: str) -> bool:
         result = self.session.execute(
             update(OrderRow)
-            .where(OrderRow.id == row_id, OrderRow.state == expected)
+            .where(
+                OrderRow.id == row_id,
+                OrderRow.mt5_account_id == self.mt5_account_id,
+                OrderRow.state == expected,
+            )
             .values(state=new)
             .execution_options(synchronize_session=False)
         )
@@ -279,20 +292,29 @@ class OrderRepository:
         return self.session.scalar(
             select(func.count())
             .select_from(OrderRow)
+            .where(OrderRow.mt5_account_id == self.mt5_account_id)
             .where(OrderRow.created_at >= start)
             .where(OrderRow.state.in_(["SUBMITTED", "FILLED", "APPROVED", "PENDING_APPROVAL"]))
         ) or 0
 
     def list_recent(self, limit: int = 50) -> list[OrderRow]:
         return list(
-            self.session.scalars(select(OrderRow).order_by(OrderRow.id.desc()).limit(limit))
+            self.session.scalars(
+                select(OrderRow)
+                .where(OrderRow.mt5_account_id == self.mt5_account_id)
+                .order_by(OrderRow.id.desc())
+                .limit(limit)
+            )
         )
 
     def list_reconciliation_pending(self, limit: int = 20) -> list[OrderRow]:
         return list(
             self.session.scalars(
                 select(OrderRow)
-                .where(OrderRow.state.in_(["SUBMITTED", "RECONCILIATION_REQUIRED"]))
+                .where(
+                    OrderRow.mt5_account_id == self.mt5_account_id,
+                    OrderRow.state.in_(["SUBMITTED", "RECONCILIATION_REQUIRED"]),
+                )
                 .order_by(OrderRow.id)
                 .limit(limit)
             )
@@ -302,7 +324,10 @@ class OrderRepository:
         return list(
             self.session.scalars(
                 select(OrderRow)
-                .where(OrderRow.state == "PENDING_APPROVAL")
+                .where(
+                    OrderRow.mt5_account_id == self.mt5_account_id,
+                    OrderRow.state == "PENDING_APPROVAL",
+                )
                 .order_by(OrderRow.created_at)
                 .limit(limit)
             )
@@ -318,7 +343,10 @@ class OrderRepository:
         return list(
             self.session.scalars(
                 select(OrderRow)
-                .where(OrderRow.state == "PENDING_APPROVAL")
+                .where(
+                    OrderRow.mt5_account_id == self.mt5_account_id,
+                    OrderRow.state == "PENDING_APPROVAL",
+                )
                 .where(OrderRow.created_at <= cutoff)
                 .order_by(OrderRow.created_at)
                 .limit(limit)
@@ -333,6 +361,7 @@ class OrderRepository:
         count = self.session.scalar(
             select(func.count())
             .select_from(OrderRow)
+            .where(OrderRow.mt5_account_id == self.mt5_account_id)
             .where(OrderRow.symbol == symbol)
             .where(OrderRow.side == side)
             .where(OrderRow.volume == volume)
@@ -344,11 +373,13 @@ class OrderRepository:
 
 
 class RiskRepository:
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, mt5_account_id: int = 1) -> None:
         self.session = session
+        self.mt5_account_id = mt5_account_id
 
     def record(self, symbol: str, result: RiskResult, idempotency_key: str | None) -> RiskDecisionRow:
         row = RiskDecisionRow(
+            mt5_account_id=self.mt5_account_id,
             idempotency_key=idempotency_key,
             symbol=symbol,
             decision=result.decision.value,
@@ -363,6 +394,7 @@ class RiskRepository:
         return list(
             self.session.scalars(
                 select(RiskDecisionRow).order_by(RiskDecisionRow.id.desc()).limit(limit)
+                .where(RiskDecisionRow.mt5_account_id == self.mt5_account_id)
             )
         )
 
@@ -374,14 +406,18 @@ class RiskRepository:
         """
         return self.session.scalar(
             select(RiskDecisionRow)
-            .where(RiskDecisionRow.idempotency_key == idempotency_key)
+            .where(
+                RiskDecisionRow.mt5_account_id == self.mt5_account_id,
+                RiskDecisionRow.idempotency_key == idempotency_key,
+            )
             .order_by(RiskDecisionRow.id.desc())
         )
 
 
 class AuditRepository:
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, mt5_account_id: int = 1) -> None:
         self.session = session
+        self.mt5_account_id = mt5_account_id
 
     def write(self, *, event: str, idempotency_key: str | None = None, order_id: int | None = None,
               symbol: str | None = None, account_type: str | None = None,
@@ -390,6 +426,7 @@ class AuditRepository:
               user_approval: bool | None = None, mt5_response: dict | None = None,
               payload: dict | None = None) -> AuditLogRow:
         row = AuditLogRow(
+            mt5_account_id=self.mt5_account_id,
             event=event,
             idempotency_key=idempotency_key,
             order_id=order_id,
@@ -409,14 +446,23 @@ class AuditRepository:
 
     def list_recent(self, limit: int = 100) -> list[AuditLogRow]:
         return list(
-            self.session.scalars(select(AuditLogRow).order_by(AuditLogRow.id.desc()).limit(limit))
+            self.session.scalars(
+                select(AuditLogRow)
+                .where(AuditLogRow.mt5_account_id == self.mt5_account_id)
+                .order_by(AuditLogRow.id.desc())
+                .limit(limit)
+            )
         )
 
     def has_event(self, order_id: int, event: str) -> bool:
         count = self.session.scalar(
             select(func.count())
             .select_from(AuditLogRow)
-            .where(AuditLogRow.order_id == order_id, AuditLogRow.event == event)
+            .where(
+                AuditLogRow.mt5_account_id == self.mt5_account_id,
+                AuditLogRow.order_id == order_id,
+                AuditLogRow.event == event,
+            )
         )
         return (count or 0) > 0
 
@@ -438,11 +484,14 @@ class LogRepository:
 
 
 class WorkflowRepository:
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, mt5_account_id: int = 1) -> None:
         self.session = session
+        self.mt5_account_id = mt5_account_id
 
     def start(self, step: str = "init") -> WorkflowRunRow:
-        row = WorkflowRunRow(step=step, status="running")
+        row = WorkflowRunRow(
+            mt5_account_id=self.mt5_account_id, step=step, status="running"
+        )
         self.session.add(row)
         self.session.flush()
         return row
@@ -461,28 +510,44 @@ class WorkflowRepository:
 
     def list_recent(self, limit: int = 20) -> list[WorkflowRunRow]:
         return list(
-            self.session.scalars(select(WorkflowRunRow).order_by(WorkflowRunRow.id.desc()).limit(limit))
+            self.session.scalars(
+                select(WorkflowRunRow)
+                .where(WorkflowRunRow.mt5_account_id == self.mt5_account_id)
+                .order_by(WorkflowRunRow.id.desc())
+                .limit(limit)
+            )
         )
 
 
 class PositionRepository:
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, mt5_account_id: int = 1) -> None:
         self.session = session
+        self.mt5_account_id = mt5_account_id
 
     def count_open(self) -> int:
         # Phase 1: positions are synced as snapshots; count the latest sync batch.
         recent = datetime.now(timezone.utc) - timedelta(minutes=10)
         return self.session.scalar(
-            select(func.count()).select_from(PositionRow).where(PositionRow.synced_at >= recent)
+            select(func.count())
+            .select_from(PositionRow)
+            .where(
+                PositionRow.mt5_account_id == self.mt5_account_id,
+                PositionRow.synced_at >= recent,
+            )
         ) or 0
 
 
 class Mt5ConfigRepository:
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, mt5_account_id: int = 1) -> None:
         self.session = session
+        self.mt5_account_id = mt5_account_id
 
     def get(self) -> Mt5ConfigRow | None:
-        return self.session.get(Mt5ConfigRow, 1)
+        return self.session.scalar(
+            select(Mt5ConfigRow).where(
+                Mt5ConfigRow.mt5_account_id == self.mt5_account_id
+            )
+        )
 
     def get_config(self) -> Mt5RuntimeConfig | None:
         row = self.get()
@@ -503,7 +568,7 @@ class Mt5ConfigRepository:
     def save(self, config: Mt5RuntimeConfig, *, updated_by: str) -> Mt5ConfigRow:
         row = self.get()
         if row is None:
-            row = Mt5ConfigRow(id=1)
+            row = Mt5ConfigRow(mt5_account_id=self.mt5_account_id)
             self.session.add(row)
         row.enabled = config.enabled
         row.bridge_type = config.bridge_type
@@ -519,21 +584,26 @@ class Mt5ConfigRepository:
         return row
 
     def bind_account(self, account_id: int) -> Mt5ConfigRow:
+        self.mt5_account_id = account_id
         row = self.get()
         if row is None:
-            row = Mt5ConfigRow(id=1)
+            row = Mt5ConfigRow(mt5_account_id=account_id)
             self.session.add(row)
-        row.mt5_account_id = account_id
         self.session.flush()
         return row
 
 
 class StrategyConfigRepository:
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, mt5_account_id: int = 1) -> None:
         self.session = session
+        self.mt5_account_id = mt5_account_id
 
     def get(self) -> StrategyConfigRow | None:
-        return self.session.get(StrategyConfigRow, 1)
+        return self.session.scalar(
+            select(StrategyConfigRow).where(
+                StrategyConfigRow.mt5_account_id == self.mt5_account_id
+            )
+        )
 
     def get_config(self) -> StrategyPresetConfig | None:
         row = self.get()
@@ -559,7 +629,7 @@ class StrategyConfigRepository:
     ) -> StrategyConfigRow:
         row = self.get()
         if row is None:
-            row = StrategyConfigRow(id=1)
+            row = StrategyConfigRow(mt5_account_id=self.mt5_account_id)
             self.session.add(row)
         for field, value in config.model_dump().items():
             setattr(row, field, value)
@@ -640,11 +710,12 @@ class AnalysisProviderRepository:
 
 
 class AnalysisSnapshotRepository:
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, mt5_account_id: int = 1) -> None:
         self.session = session
+        self.mt5_account_id = mt5_account_id
 
     def record(self, **values) -> AnalysisSnapshotRow:
-        row = AnalysisSnapshotRow(**values)
+        row = AnalysisSnapshotRow(mt5_account_id=self.mt5_account_id, **values)
         self.session.add(row)
         self.session.flush()
         return row
@@ -653,6 +724,9 @@ class AnalysisSnapshotRepository:
         return list(
             self.session.scalars(
                 select(AnalysisSnapshotRow)
+                .where(
+                    AnalysisSnapshotRow.mt5_account_id == self.mt5_account_id
+                )
                 .order_by(AnalysisSnapshotRow.id.desc())
                 .limit(limit)
             )
@@ -695,14 +769,20 @@ class MarketDataConfigRepository:
 
 
 class TradeProposalRepository:
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, mt5_account_id: int = 1) -> None:
         self.session = session
+        self.mt5_account_id = mt5_account_id
 
     def get(self, proposal_id: int) -> TradeProposalRow | None:
-        return self.session.get(TradeProposalRow, proposal_id)
+        return self.session.scalar(
+            select(TradeProposalRow).where(
+                TradeProposalRow.id == proposal_id,
+                TradeProposalRow.mt5_account_id == self.mt5_account_id,
+            )
+        )
 
     def create(self, **values) -> TradeProposalRow:
-        row = TradeProposalRow(**values)
+        row = TradeProposalRow(mt5_account_id=self.mt5_account_id, **values)
         self.session.add(row)
         self.session.flush()
         return row
@@ -711,6 +791,7 @@ class TradeProposalRepository:
         return list(
             self.session.scalars(
                 select(TradeProposalRow)
+                .where(TradeProposalRow.mt5_account_id == self.mt5_account_id)
                 .order_by(TradeProposalRow.id.desc())
                 .limit(limit)
             )
@@ -724,6 +805,7 @@ class TradeProposalRepository:
         """
         return self.session.scalar(
             select(TradeProposalRow).where(
+                TradeProposalRow.mt5_account_id == self.mt5_account_id,
                 TradeProposalRow.order_idempotency_key == order_idempotency_key
             )
         )
@@ -743,11 +825,18 @@ class TradeProposalRepository:
 
 
 class ClosedTradeRepository:
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, mt5_account_id: int = 1) -> None:
         self.session = session
+        self.mt5_account_id = mt5_account_id
 
     def _existing_tickets(self) -> set[int]:
-        return set(self.session.scalars(select(ClosedTradeRow.ticket)))
+        return set(
+            self.session.scalars(
+                select(ClosedTradeRow.ticket).where(
+                    ClosedTradeRow.mt5_account_id == self.mt5_account_id
+                )
+            )
+        )
 
     def upsert_from_bridge(
         self,
@@ -780,6 +869,7 @@ class ClosedTradeRepository:
             )
             self.session.add(
                 ClosedTradeRow(
+                    mt5_account_id=self.mt5_account_id,
                     ticket=trade.ticket,
                     symbol=trade.symbol,
                     side=side,
@@ -807,17 +897,22 @@ class ClosedTradeRepository:
         return list(
             self.session.scalars(
                 select(ClosedTradeRow).order_by(ClosedTradeRow.id.desc()).limit(limit)
+                .where(ClosedTradeRow.mt5_account_id == self.mt5_account_id)
             )
         )
 
     def get_by_ticket(self, ticket: int) -> ClosedTradeRow | None:
         return self.session.scalar(
             select(ClosedTradeRow).where(ClosedTradeRow.ticket == ticket)
+            .where(ClosedTradeRow.mt5_account_id == self.mt5_account_id)
         )
 
     def list_losing(self, limit: int = 100, *, only_unreviewed: bool = False) -> list[ClosedTradeRow]:
         """Losing closed trades (profit < 0), newest first — the review queue."""
-        stmt = select(ClosedTradeRow).where(ClosedTradeRow.profit < 0)
+        stmt = select(ClosedTradeRow).where(
+            ClosedTradeRow.mt5_account_id == self.mt5_account_id,
+            ClosedTradeRow.profit < 0,
+        )
         if only_unreviewed:
             stmt = stmt.where(ClosedTradeRow.reviewed.is_(False))
         return list(
@@ -861,12 +956,26 @@ class ClosedTradeRepository:
         }
 
     def summary(self) -> dict:
-        return self._aggregate(list(self.session.scalars(select(ClosedTradeRow))))
+        return self._aggregate(
+            list(
+                self.session.scalars(
+                    select(ClosedTradeRow).where(
+                        ClosedTradeRow.mt5_account_id == self.mt5_account_id
+                    )
+                )
+            )
+        )
 
     def daily_breakdown(self, limit_days: int = 30) -> list[dict]:
         """Closed trades grouped by close day (newest first), each with its own
         P&L/R aggregate. Trades without a close time fall back to sync time."""
-        rows = list(self.session.scalars(select(ClosedTradeRow)))
+        rows = list(
+            self.session.scalars(
+                select(ClosedTradeRow).where(
+                    ClosedTradeRow.mt5_account_id == self.mt5_account_id
+                )
+            )
+        )
         buckets: dict[str, list[ClosedTradeRow]] = {}
         for r in rows:
             ts = r.close_time or r.synced_at

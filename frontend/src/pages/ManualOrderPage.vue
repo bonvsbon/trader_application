@@ -1,6 +1,18 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
 import { api, type OrderResult, type OrderTicket, type RiskPreview } from "../api/client";
+import PageHead from "../components/ui/PageHead.vue";
+import Panel from "../components/ui/Panel.vue";
+import Badge from "../components/ui/Badge.vue";
+import Btn from "../components/ui/Btn.vue";
+import Kv from "../components/ui/Kv.vue";
+import Field from "../components/ui/Field.vue";
+import Switch from "../components/ui/Switch.vue";
+import Notice from "../components/ui/Notice.vue";
+import Reasons from "../components/ui/Reasons.vue";
+import EmptyState from "../components/ui/EmptyState.vue";
+import Icon from "../components/ui/Icon.vue";
+import { badgeClass } from "../components/ui/badge";
 
 const form = ref<OrderTicket>({ symbol: "XAUUSD", side: "BUY", volume: 0.1, sl: null, tp: null, risk_pct: 1.0 });
 const accountType = ref<string>("UNKNOWN");
@@ -31,6 +43,7 @@ async function doSubmit() {
 async function checkPreview(): Promise<boolean> {
   busy.value = true;
   previewError.value = null;
+  result.value = null;
   try {
     preview.value = await api.previewOrder(form.value);
     return preview.value.decision !== "BLOCK";
@@ -44,7 +57,7 @@ async function checkPreview(): Promise<boolean> {
 
 async function onSubmit() {
   if (!(await checkPreview())) return;
-  if (isReal.value) confirmDialog.value?.showModal(); // real money: confirm first
+  if (isReal.value) confirmDialog.value?.showModal();
   else doSubmit();
 }
 
@@ -67,111 +80,113 @@ async function reconcile() {
   finally { busy.value = false; }
 }
 
+function money(v: number | null | undefined, sign = "") {
+  return v == null ? "—" : `${sign}$${Math.abs(v).toFixed(2)}`;
+}
+function pct(v: number | null | undefined) {
+  return v == null ? "—" : `${v.toFixed(2)}%`;
+}
+
 onMounted(loadAccount);
 </script>
 
 <template>
-  <div class="page-head">
-    <h2>Manual Order</h2>
-    <p class="sub">Every order passes the Risk Manager before it can reach the broker.</p>
-  </div>
+  <PageHead title="Manual Order" sub="Every ticket runs through the Risk Manager before any broker call" />
 
   <div class="order-layout">
-    <section class="panel ticket">
-      <div class="panel-head">
-        <span class="panel-title">Order ticket</span>
-        <span class="badge" :class="accountType">{{ accountType }}</span>
+    <Panel title="Order ticket">
+      <template #action><Badge :tone="accountType === 'DEMO' ? 'allow' : accountType === 'REAL' ? 'block' : ''">{{ accountType }}</Badge></template>
+      <div class="stack">
+        <Field label="Symbol"><input v-model="form.symbol" class="mono" /></Field>
+        <Field label="Side">
+          <div class="seg" :class="form.side === 'BUY' ? 'buy' : 'sell'">
+            <button :data-on="form.side === 'BUY'" @click="form.side = 'BUY'">BUY</button>
+            <button :data-on="form.side === 'SELL'" @click="form.side = 'SELL'">SELL</button>
+          </div>
+        </Field>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-5)">
+          <Field label="Volume (lots)"><input class="mono" type="number" step="0.01" min="0.01" v-model.number="form.volume" /></Field>
+          <Field label="Risk %"><input class="mono" type="number" step="0.1" min="0.1" v-model.number="form.risk_pct" /></Field>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-5)">
+          <Field label="Stop loss" req><input class="mono" type="number" step="0.01" v-model.number="form.sl" placeholder="required" /></Field>
+          <Field label="Take profit"><input class="mono" type="number" step="0.01" v-model.number="form.tp" placeholder="optional" /></Field>
+        </div>
+        <Notice v-if="previewError">{{ previewError }}</Notice>
+        <div class="row" style="gap: var(--sp-4)">
+          <Btn variant="secondary" icon="search" :disabled="busy" @click="checkPreview">Check size and risk</Btn>
+          <Btn full :icon="isReal ? 'shield' : 'check'" :variant="isReal ? 'danger' : undefined" :loading="busy" @click="onSubmit">
+            {{ isReal ? "Review real-account order" : "Submit order" }}
+          </Btn>
+        </div>
+        <span class="hint">{{ isReal ? "Real: confirm → queued → approved before fill." : "Demo: fills immediately if the Risk Manager allows." }}</span>
       </div>
+    </Panel>
 
-      <div class="row" style="gap: var(--sp-5)">
-        <div class="field" style="flex: 1"><label>Symbol</label><input v-model="form.symbol" /></div>
-        <div class="field" style="flex: 1"><label>Side</label><select v-model="form.side"><option>BUY</option><option>SELL</option></select></div>
-      </div>
-      <div class="row" style="gap: var(--sp-5)">
-        <div class="field" style="flex: 1"><label>Volume (lots)</label><input type="number" step="0.01" min="0.01" v-model.number="form.volume" /></div>
-        <div class="field" style="flex: 1"><label>Risk %</label><input type="number" step="0.1" min="0.1" v-model.number="form.risk_pct" required /></div>
-      </div>
-      <div class="row" style="gap: var(--sp-5)">
-        <div class="field" style="flex: 1"><label>Stop loss</label><input type="number" step="0.01" v-model.number="form.sl" placeholder="required" required /></div>
-        <div class="field" style="flex: 1"><label>Take profit</label><input type="number" step="0.01" v-model.number="form.tp" placeholder="optional" /></div>
-      </div>
+    <div class="stack">
+      <Panel title="Risk preview">
+        <template #action><Badge v-if="preview" :tone="badgeClass(preview.decision)" lg>{{ preview.decision }}</Badge></template>
+        <div v-if="preview" class="stack-sm">
+          <Kv k="Entry (est.)" :v="preview.sizing.entry_price ?? '—'" mono />
+          <Kv k="Estimated loss" :v="money(preview.sizing.estimated_loss)" mono tone="neg" />
+          <Kv k="Estimated reward" :v="money(preview.sizing.estimated_reward, '+')" mono tone="pos" />
+          <Kv k="Actual risk" :v="pct(preview.sizing.sized_risk_pct)" mono />
+          <Kv k="Max lot for risk" :v="preview.sizing.max_volume_for_risk ?? '—'" mono />
+          <Kv k="Projected portfolio risk" :v="pct(preview.sizing.projected_portfolio_risk_pct)" mono />
+          <Reasons v-if="preview.reasons.length" :items="preview.reasons" />
+          <div v-if="preview.warnings.length" style="margin-top: var(--sp-4)"><Notice tone="warn">{{ preview.warnings[0] }}</Notice></div>
+        </div>
+        <EmptyState v-else icon="search" title="No preview yet" desc="Fill the ticket and run Check size and risk." />
+      </Panel>
 
-      <button class="btn secondary" style="width: 100%; margin-top: var(--sp-3)" :disabled="busy" @click="checkPreview">
-        Check size and risk
-      </button>
-      <button class="btn" style="width: 100%; margin-top: var(--sp-3)" :disabled="busy" @click="onSubmit">
-        <span v-if="busy" class="spin"></span>
-        {{ isReal ? "Review real-account order" : "Submit order" }}
-      </button>
-      <p class="faint" style="margin-top: var(--sp-4); font-size: var(--text-xs)">
-        {{ isReal ? "Real account: you will confirm, then approve before execution." : "Demo account: filled immediately if risk checks pass." }}
-      </p>
-      <p v-if="previewError" class="notice" style="margin-top: var(--sp-4)">{{ previewError }}</p>
-    </section>
-
-    <section v-if="preview && !result" class="panel result">
-      <div class="panel-head">
-        <span class="panel-title">Risk preview</span>
-        <span class="badge lg" :class="preview.decision">{{ preview.decision }}</span>
-      </div>
-      <div class="kv"><span class="label">Entry</span><span class="value mono">{{ preview.sizing.entry_price ?? "—" }}</span></div>
-      <div class="kv"><span class="label">Estimated loss</span><span class="value mono neg">{{ preview.sizing.estimated_loss == null ? "—" : `$${preview.sizing.estimated_loss.toFixed(2)}` }}</span></div>
-      <div class="kv"><span class="label">Estimated reward</span><span class="value mono pos">{{ preview.sizing.estimated_reward == null ? "—" : `$${preview.sizing.estimated_reward.toFixed(2)}` }}</span></div>
-      <div class="kv"><span class="label">Actual risk</span><span class="value mono">{{ preview.sizing.sized_risk_pct == null ? "—" : `${preview.sizing.sized_risk_pct.toFixed(2)}%` }}</span></div>
-      <div class="kv"><span class="label">Max lot for risk</span><span class="value mono">{{ preview.sizing.max_volume_for_risk ?? "—" }}</span></div>
-      <div class="kv"><span class="label">Projected portfolio risk</span><span class="value mono">{{ preview.sizing.projected_portfolio_risk_pct == null ? "—" : `${preview.sizing.projected_portfolio_risk_pct.toFixed(2)}%` }}</span></div>
-      <ul v-if="preview.reasons.length" class="reasons"><li v-for="(r, i) in preview.reasons" :key="i">{{ r }}</li></ul>
-      <ul v-if="preview.warnings.length" class="reasons warn"><li v-for="(w, i) in preview.warnings" :key="i">{{ w }}</li></ul>
-    </section>
-
-    <section v-else-if="result" class="panel result">
-      <div class="panel-head"><span class="panel-title">Result</span></div>
-      <div class="row" style="gap: var(--sp-4)">
-        <span class="badge lg" :class="result.decision">{{ result.decision }}</span>
-        <span class="badge" :class="result.state">{{ result.state }}</span>
-      </div>
-      <p style="margin-top: var(--sp-5)">{{ result.message }}</p>
-      <ul v-if="result.reasons?.length" class="reasons"><li v-for="(r, i) in result.reasons" :key="i">{{ r }}</li></ul>
-      <ul v-if="result.warnings?.length" class="reasons warn"><li v-for="(w, i) in result.warnings" :key="i">{{ w }}</li></ul>
-
-      <div v-if="result.state === 'PENDING_APPROVAL'" class="row" style="margin-top: var(--sp-6); gap: var(--sp-4)">
-        <button class="btn" :disabled="busy" @click="approve">Approve and execute</button>
-        <button class="btn secondary" :disabled="busy" @click="reject">Reject order</button>
-      </div>
-      <button
-        v-if="result.state === 'RECONCILIATION_REQUIRED' || result.state === 'SUBMITTED'"
-        class="btn secondary"
-        style="margin-top: var(--sp-6)"
-        :disabled="busy"
-        @click="reconcile"
-      >
-        Reconcile with MT5
-      </button>
-    </section>
-
-    <section v-else class="panel result empty-result">
-      <div class="empty">
-        <div class="icon">↑</div>
-        <div class="title">No order submitted yet</div>
-        <p class="muted">Fill the ticket and submit. The risk verdict and audit result appear here.</p>
-      </div>
-    </section>
+      <Panel title="Result">
+        <div v-if="result" class="stack-sm">
+          <div class="row wrap" style="gap: var(--sp-4)">
+            <Badge :tone="badgeClass(result.decision)" lg>{{ result.decision }}</Badge>
+            <Badge :tone="badgeClass(result.state)">{{ result.state }}</Badge>
+          </div>
+          <p class="muted" style="margin: 0; font-size: var(--text-sm)">{{ result.message }}</p>
+          <Reasons v-if="result.reasons?.length" :items="result.reasons" />
+          <Reasons v-if="result.warnings?.length" :items="result.warnings" warn />
+          <div v-if="result.state === 'PENDING_APPROVAL'" class="row" style="gap: var(--sp-4); margin-top: var(--sp-3)">
+            <Btn sm icon="check" :disabled="busy" @click="approve">Approve and execute</Btn>
+            <Btn sm variant="danger" icon="x" :disabled="busy" @click="reject">Reject order</Btn>
+          </div>
+          <Btn
+            v-if="result.state === 'RECONCILIATION_REQUIRED' || result.state === 'SUBMITTED'"
+            sm variant="secondary" icon="refresh" style="margin-top: var(--sp-3)" :disabled="busy" @click="reconcile"
+          >Reconcile with MT5</Btn>
+        </div>
+        <EmptyState v-else icon="order" title="No order submitted yet" desc="Submitted tickets and their risk verdict appear here." />
+      </Panel>
+    </div>
   </div>
 
   <dialog ref="confirmDialog" class="modal" aria-labelledby="confirm-title" @click="onBackdrop" @cancel="closeConfirm">
-    <h3 id="confirm-title">Confirm real-account order</h3>
-    <p>Submitting a <strong>real-money</strong> order: <span class="mono">{{ form.side }} {{ form.volume }}</span> lots of <span class="mono">{{ form.symbol }}</span>.</p>
-    <p class="muted" style="margin-top: var(--sp-4)">It still passes the Risk Manager, and in Phase 1 you must approve it before it reaches the broker.</p>
-    <div class="row" style="justify-content: flex-end; margin-top: var(--sp-7); gap: var(--sp-4)">
-      <button class="btn secondary" autofocus @click="closeConfirm">Cancel</button>
-      <button class="btn danger" @click="doSubmit">Submit order</button>
+    <div class="modal-card">
+      <div class="row" style="gap: var(--sp-5); margin-bottom: var(--sp-5)">
+        <span class="modal-ic"><Icon name="alert" :size="20" /></span>
+        <h3 id="confirm-title" style="font-size: var(--text-lg)">Confirm real-account order</h3>
+      </div>
+      <p class="muted" style="font-size: var(--text-sm); line-height: 1.55">
+        This sends a <strong style="color: var(--block-fg)">REAL</strong> {{ form.side }} order on {{ form.symbol }}, {{ form.volume }} lots. It will <strong>not</strong> fill immediately — it enters the approval queue and still requires a second manual approval.
+      </p>
+      <div class="row" style="gap: var(--sp-4); justify-content: flex-end; margin-top: var(--sp-7)">
+        <Btn variant="secondary" @click="closeConfirm">Cancel</Btn>
+        <Btn variant="danger" icon="shield" @click="doSubmit">Queue for approval</Btn>
+      </div>
     </div>
   </dialog>
 </template>
 
 <style scoped>
-.order-layout { display: flex; flex-wrap: wrap; gap: var(--sp-6); align-items: flex-start; }
-.ticket { flex: 1 1 380px; max-width: 460px; }
-.result { flex: 1 1 320px; }
-.empty-result { display: grid; place-items: center; min-height: 220px; }
+.order-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.95fr);
+  gap: var(--sp-7);
+  align-items: start;
+}
+@media (max-width: 880px) {
+  .order-layout { grid-template-columns: 1fr; }
+}
 </style>

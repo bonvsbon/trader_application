@@ -93,6 +93,7 @@ class Settings(BaseSettings):
 
     # ── Workflow ─────────────────────────────────────────────────────────────
     workflow_interval_seconds: int = 300
+    workflow_auto_demo_enabled: bool = False
     # After consecutive failed cycles the scheduler backs off exponentially up to
     # this ceiling, then returns to the normal interval on the next success.
     workflow_max_backoff_seconds: int = 3600
@@ -130,7 +131,15 @@ class Settings(BaseSettings):
     # ── News provider (Phase 2) ───────────────────────────────────────────────
     news_provider: str = "mock"
     news_api_key: str = ""
+    news_max_age_minutes: float = 15.0
+    news_official_timeout_sec: float = 10.0
+    news_official_cache_minutes: float = 10.0
     volatility_provider: str = "mock"
+    volatility_timeframe: str = "M15"
+    volatility_atr_period: int = 14
+    volatility_baseline_bars: int = 72
+    volatility_abnormal_ratio: float = 2.0
+    volatility_max_bar_age_minutes: float = 45.0
 
     # Read-only realtime watchlist data
     market_data_enabled: bool = True
@@ -150,6 +159,22 @@ class Settings(BaseSettings):
         allowed = {"mock", "ea_socket"}
         if v not in allowed:
             raise ValueError(f"MT5_BRIDGE_TYPE must be one of {allowed}, got {v!r}")
+        return v
+
+    @field_validator("volatility_provider")
+    @classmethod
+    def _check_volatility_provider(cls, v: str) -> str:
+        allowed = {"mock", "mt5"}
+        if v not in allowed:
+            raise ValueError(f"VOLATILITY_PROVIDER must be one of {allowed}, got {v!r}")
+        return v
+
+    @field_validator("news_provider")
+    @classmethod
+    def _check_news_provider(cls, v: str) -> str:
+        allowed = {"mock", "routed_mcp", "official_us"}
+        if v not in allowed:
+            raise ValueError(f"NEWS_PROVIDER must be one of {allowed}, got {v!r}")
         return v
 
     # ── Derived helpers ───────────────────────────────────────────────────────
@@ -268,6 +293,13 @@ class Settings(BaseSettings):
             problems.append(
                 "WORKFLOW_MAX_BACKOFF_SECONDS must be >= WORKFLOW_INTERVAL_SECONDS"
             )
+        if (
+            self.workflow_auto_demo_enabled
+            and self.trading_mode is not TradingMode.AUTO_DEMO
+        ):
+            problems.append(
+                "WORKFLOW_AUTO_DEMO_ENABLED=true requires TRADING_MODE=AUTO_DEMO"
+            )
         if self.approval_expiry_minutes <= 0:
             problems.append("APPROVAL_EXPIRY_MINUTES must be > 0")
         if self.reconciliation_expiry_minutes <= 0:
@@ -288,6 +320,32 @@ class Settings(BaseSettings):
             "M1", "M5", "M15", "M30", "H1", "H4", "D1",
         }:
             problems.append("STRATEGY_TIMEFRAME must be one of M1/M5/M15/M30/H1/H4/D1")
+        if self.volatility_timeframe.upper() not in {
+            "M1", "M5", "M15", "M30", "H1", "H4", "D1",
+        }:
+            problems.append(
+                "VOLATILITY_TIMEFRAME must be one of M1/M5/M15/M30/H1/H4/D1"
+            )
+        if self.volatility_atr_period < 2:
+            problems.append("VOLATILITY_ATR_PERIOD must be >= 2")
+        if self.volatility_baseline_bars < self.volatility_atr_period:
+            problems.append(
+                "VOLATILITY_BASELINE_BARS must be >= VOLATILITY_ATR_PERIOD"
+            )
+        if self.volatility_abnormal_ratio <= 1:
+            problems.append("VOLATILITY_ABNORMAL_RATIO must be > 1")
+        if self.volatility_max_bar_age_minutes <= 0:
+            problems.append("VOLATILITY_MAX_BAR_AGE_MINUTES must be > 0")
+        if self.news_max_age_minutes <= 0:
+            problems.append("NEWS_MAX_AGE_MINUTES must be > 0")
+        if self.news_official_timeout_sec <= 0:
+            problems.append("NEWS_OFFICIAL_TIMEOUT_SEC must be > 0")
+        if self.news_official_cache_minutes <= 0:
+            problems.append("NEWS_OFFICIAL_CACHE_MINUTES must be > 0")
+        if self.news_official_cache_minutes > self.news_max_age_minutes:
+            problems.append(
+                "NEWS_OFFICIAL_CACHE_MINUTES must be <= NEWS_MAX_AGE_MINUTES"
+            )
         if self.mcp_max_discovered_tools < 1:
             problems.append("MCP_MAX_DISCOVERED_TOOLS must be >= 1")
         if self.analysis_provider_max_response_chars < 1000:

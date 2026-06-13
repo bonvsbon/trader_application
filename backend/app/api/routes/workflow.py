@@ -5,7 +5,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.api.auth import get_operator
+from app.api.auth import get_auth_context, get_operator
+from app.auth.service import AuthContext
 from app.api.serializers import workflow_to_dict
 from app.persistence.db import get_db
 from app.persistence.repositories import WorkflowRepository
@@ -39,5 +40,11 @@ def workflow_runs(
     limit: int = 20,
     session: Session = Depends(get_db),
     operator: str = Depends(get_operator),
+    context: AuthContext = Depends(get_auth_context),
 ) -> list[dict]:
-    return [workflow_to_dict(w) for w in WorkflowRepository(session).list_recent(limit)]
+    return [
+        workflow_to_dict(w)
+        for w in WorkflowRepository(
+            session, context.mt5_account_id or 1
+        ).list_recent(limit)
+    ]

@@ -111,8 +111,8 @@ def pending_approval_orders(
     svc: OrderService = Depends(get_order_service),
     operator: str = Depends(get_operator),
 ) -> list[dict]:
-    risk = RiskRepository(svc.session)
-    proposals = TradeProposalRepository(svc.session)
+    risk = RiskRepository(svc.session, svc.mt5_account_id)
+    proposals = TradeProposalRepository(svc.session, svc.mt5_account_id)
     return [
         pending_approval_to_dict(
             o,
